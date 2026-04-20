@@ -6,6 +6,77 @@ const socket = new Websocket("http://localhost:8123/api/websocket");
 
 let actualState = {};
 
+function calculateDuration(runAt, runUntil) {
+  if (!runAt || !runUntil) return null;
+  const start = new Date(runAt);
+  const end = new Date(runUntil);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+  return Math.round((end - start) / (1000 * 60)); // minutes, rounded
+}
+
+function updateActualState(event) {
+  if (event.event_type !== "state_changed") return;
+
+  const { entity_id, new_state } = event.data;
+  const state = new_state.state;
+
+  if (entity_id.startsWith("input_select.")) {
+    if (entity_id === "input_select.crop_type") {
+      actualState.crop.type = state;
+    } else if (entity_id === "input_select.growth_stage") {
+      actualState.crop.mode = state;  // Assuming mode is growth_stage
+    } else if (entity_id === "input_select.priority_mode") {
+      actualState.crop.growth_stage = state;  // Assuming growth_stage is priority_mode
+    }
+  } else if (entity_id.startsWith("input_number.")) {
+    const sensorType = entity_id.split(".")[1];
+    const sensor = actualState.sensors.find(s => s.type === sensorType);
+    if (sensor) {
+      sensor.value = state;
+    }
+  } else if (entity_id.startsWith("input_boolean.")) {
+    const boolType = entity_id.split(".")[1];
+    if (boolType.endsWith("_status")) {
+      const actuatorType = boolType.replace("_status", "");
+      const actuator = actualState.actuators.find(a => a.type === actuatorType);
+      if (actuator) {
+        actuator.status = state;
+      }
+    } else if (boolType.endsWith("_control_mode")) {
+      const actuatorType = boolType.replace("_control_mode", "");
+      const actuator = actualState.actuators.find(a => a.type === actuatorType);
+      if (actuator) {
+        actuator.control_mode = state === "on" ? "semi_auto" : "auto";
+      }
+    } else {
+      // Warnings
+      const warning = actualState.warnings.find(w => w.title === boolType);
+      if (warning) {
+        warning.status = state === "on" ? "active" : "unactive";
+      }
+    }
+  } else if (entity_id.startsWith("input_datetime.")) {
+    const datetimeType = entity_id.split(".")[1];
+    if (datetimeType.endsWith("_execute_at")) {
+      const actuatorType = datetimeType.replace("_execute_at", "");
+      const actuator = actualState.actuators.find(a => a.type === actuatorType);
+      if (actuator) {
+        actuator.run_at = state;
+        actuator.duration_minutes = calculateDuration(actuator.run_at, actuator.run_until);
+      }
+    } else if (datetimeType.endsWith("_execute_until")) {
+      const actuatorType = datetimeType.replace("_execute_until", "");
+      const actuator = actualState.actuators.find(a => a.type === actuatorType);
+      if (actuator) {
+        actuator.run_until = state;
+        actuator.duration_minutes = calculateDuration(actuator.run_at, actuator.run_until);
+      }
+    }
+  } else if (entity_id === "input_text.n8n_recommendation") {
+    actualState.recommendation = state;
+  }
+}
+
 socket.on("open", () => {
   console.log("connection is opened !");
 });
@@ -47,6 +118,10 @@ socket.on("message", (msg) => {
   if (data.type === "event") {
     //when a event happens (the changed state is here )
     console.log(data);
+
+    updateActualState(data.event)
+
+
   }
 
   const legalInputs = [
@@ -100,6 +175,14 @@ socket.on("message", (msg) => {
 
       let actuators = ["pump", "fan"];
       actuators = actuators.map((actuator) => {
+        const run_at = actualState.find(
+          (element) =>
+            element.entity_id == `input_datetime.${actuator}_execute_at`,
+        )?.state;
+        const run_until = actualState.find(
+          (element) =>
+            element.entity_id == `input_datetime.${actuator}_execute_until`,
+        )?.state;
         return {
           id: 123,
           type: actuator,
@@ -114,14 +197,9 @@ socket.on("message", (msg) => {
             ).state == "on"
               ? "semi_auto"
               : "auto",
-          run_at: actualState.find(
-            (element) =>
-              element.entity_id == `input_datetime.${actuator}_execute_at`,
-          )?.state,
-          run_until: actualState.find(
-            (element) =>
-              element.entity_id == `input_datetime.${actuator}_execute_until`,
-          )?.state,
+          run_at: run_at,
+          run_until: run_until,
+          duration_minutes: calculateDuration(run_at, run_until),
         };
       });
 
