@@ -2,6 +2,9 @@
 // log the changes with console.log()
 
 import Websocket from "ws";
+import EventEmitter from "events";
+
+const stateEmitter = new EventEmitter();
 const socket = new Websocket("http://localhost:8123/api/websocket");
 
 let actualState = {};
@@ -23,16 +26,20 @@ function updateActualState(event) {
   if (entity_id.startsWith("input_select.")) {
     if (entity_id === "input_select.crop_type") {
       actualState.crop.type = state;
+      stateEmitter.emit("state_update", { field: "crop", value: actualState.crop });
     } else if (entity_id === "input_select.growth_stage") {
-      actualState.crop.mode = state;  // Assuming mode is growth_stage
+      actualState.crop.mode = state;
+      stateEmitter.emit("state_update", { field: "crop", value: actualState.crop });
     } else if (entity_id === "input_select.priority_mode") {
-      actualState.crop.growth_stage = state;  // Assuming growth_stage is priority_mode
+      actualState.crop.growth_stage = state;
+      stateEmitter.emit("state_update", { field: "crop", value: actualState.crop });
     }
   } else if (entity_id.startsWith("input_number.")) {
     const sensorType = entity_id.split(".")[1];
     const sensor = actualState.sensors.find(s => s.type === sensorType);
     if (sensor) {
       sensor.value = state;
+      stateEmitter.emit("state_update", { field: "sensors", value: actualState.sensors });
     }
   } else if (entity_id.startsWith("input_boolean.")) {
     const boolType = entity_id.split(".")[1];
@@ -41,18 +48,21 @@ function updateActualState(event) {
       const actuator = actualState.actuators.find(a => a.type === actuatorType);
       if (actuator) {
         actuator.status = state;
+        stateEmitter.emit("state_update", { field: "actuators", value: actualState.actuators });
       }
     } else if (boolType.endsWith("_control_mode")) {
       const actuatorType = boolType.replace("_control_mode", "");
       const actuator = actualState.actuators.find(a => a.type === actuatorType);
       if (actuator) {
         actuator.control_mode = state === "on" ? "semi_auto" : "auto";
+        stateEmitter.emit("state_update", { field: "actuators", value: actualState.actuators });
       }
     } else {
       // Warnings
       const warning = actualState.warnings.find(w => w.title === boolType);
       if (warning) {
         warning.status = state === "on" ? "active" : "unactive";
+        stateEmitter.emit("state_update", { field: "warnings", value: actualState.warnings });
       }
     }
   } else if (entity_id.startsWith("input_datetime.")) {
@@ -63,6 +73,7 @@ function updateActualState(event) {
       if (actuator) {
         actuator.run_at = state;
         actuator.duration_minutes = calculateDuration(actuator.run_at, actuator.run_until);
+        stateEmitter.emit("state_update", { field: "actuators", value: actualState.actuators });
       }
     } else if (datetimeType.endsWith("_execute_until")) {
       const actuatorType = datetimeType.replace("_execute_until", "");
@@ -70,10 +81,12 @@ function updateActualState(event) {
       if (actuator) {
         actuator.run_until = state;
         actuator.duration_minutes = calculateDuration(actuator.run_at, actuator.run_until);
+        stateEmitter.emit("state_update", { field: "actuators", value: actualState.actuators });
       }
     }
   } else if (entity_id === "input_text.n8n_recommendation") {
     actualState.recommendation = state;
+    stateEmitter.emit("state_update", { field: "recommendation", value: actualState.recommendation });
   }
 }
 
@@ -88,7 +101,7 @@ socket.on("message", (msg) => {
     const response = {
       type: "auth",
       access_token:
-        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiIxODI4MGJlODIyYTk0MjIyOWE0OWQ1NTBmOTdhNDI2YyIsImlhdCI6MTc3NjYwMjgxOSwiZXhwIjoyMDkxOTYyODE5fQ.fFVJIJgFiKbRP5xJPlg133n-1DRm7VlyM-pljTW0GdE",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1MGYzYWNmN2RlMTc0MzYyYTJkYjRlOGMyMmU1YmZlOSIsImlhdCI6MTc3Njc3MDEwOSwiZXhwIjoyMDkyMTMwMTA5fQ.-9gNxoMXpAGHPUkTwDBR9xZyl33w9uEVoEt6iKnTUME",
     };
     socket.send(JSON.stringify(response));
   }
@@ -117,10 +130,9 @@ socket.on("message", (msg) => {
 
   if (data.type === "event") {
     //when a event happens (the changed state is here )
-    console.log(data);
 
     updateActualState(data.event)
-
+     
 
   }
 
@@ -136,6 +148,7 @@ socket.on("message", (msg) => {
     //subscription accepted, or call service accepted, or comming data (like from the "get_states")
     if (data.id == 1) //id==1 means this is from the "get_states"
     {
+      
       actualState = data.result
         .map((element) => {
           return { entity_id: element.entity_id, state: element.state };
@@ -162,9 +175,15 @@ socket.on("message", (msg) => {
         "input_number.soil_moisture",
         "input_number.luminosity",
       ];
-      sensors = sensors.map((sensor) => {
+      sensors = sensors.map((sensor, index) => {
+        const sensorIds = [
+          "550e8400-e29b-41d4-a716-446655440001",
+          "550e8400-e29b-41d4-a716-446655440002",
+          "550e8400-e29b-41d4-a716-446655440003",
+          "550e8400-e29b-41d4-a716-446655440004",
+        ];
         return {
-          id: 123,
+          id: sensorIds[index],
           type: sensor.split(".")[1],
           unit: null,
           value: actualState.find((element) => element.entity_id == sensor)
@@ -174,7 +193,11 @@ socket.on("message", (msg) => {
       });
 
       let actuators = ["pump", "fan"];
-      actuators = actuators.map((actuator) => {
+      actuators = actuators.map((actuator, index) => {
+        const actuatorIds = [
+          "660e8400-e29b-41d4-a716-446655440005",
+          "660e8400-e29b-41d4-a716-446655440006",
+        ];
         const run_at = actualState.find(
           (element) =>
             element.entity_id == `input_datetime.${actuator}_execute_at`,
@@ -184,7 +207,7 @@ socket.on("message", (msg) => {
             element.entity_id == `input_datetime.${actuator}_execute_until`,
         )?.state;
         return {
-          id: 123,
+          id: actuatorIds[index],
           type: actuator,
           status: actualState.find(
             (element) =>
@@ -219,9 +242,20 @@ socket.on("message", (msg) => {
         "input_boolean.heavy_rainfall",
       ];
 
-      warnings = warnings.map((warning) => {
+      warnings = warnings.map((warning, index) => {
+        const warningIds = [
+          "770e8400-e29b-41d4-a716-446655440007",
+          "770e8400-e29b-41d4-a716-446655440008",
+          "770e8400-e29b-41d4-a716-446655440009",
+          "770e8400-e29b-41d4-a716-446655440010",
+          "770e8400-e29b-41d4-a716-446655440011",
+          "770e8400-e29b-41d4-a716-446655440012",
+          "770e8400-e29b-41d4-a716-446655440013",
+          "770e8400-e29b-41d4-a716-446655440014",
+          "770e8400-e29b-41d4-a716-446655440015",
+        ];
         return {
-          id: 123,
+          id: warningIds[index],
           title: warning.split(".")[1],
           status:
             actualState.find((element) => element.entity_id == warning).state ==
@@ -234,11 +268,12 @@ socket.on("message", (msg) => {
       });
 
       actualState = { crop, sensors, actuators, recommendation, warnings };
+      stateEmitter.emit("state_update", { field: "initial_state", value: actualState });
     }
   }
 });
 
-export { actualState };
+export { actualState, stateEmitter };
 
 
 
