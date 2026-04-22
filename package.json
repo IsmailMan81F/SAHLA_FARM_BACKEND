@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "description": "",
-  "main": "backend_homeassistant.js",
+  "main": "frontend_backend.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node frontend_backend.js && node backend_homeassistant.js",
-    "dev": "nodemon frontend_backend.js && nodemon backend_homeassistant.js"
+    "start": "node frontend_backend.js",
+    "dev": "nodemon frontend_backend.js"
   },
   "keywords": [],
   "author": "",
