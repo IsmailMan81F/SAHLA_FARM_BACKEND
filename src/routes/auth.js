@@ -90,17 +90,57 @@ export function createAuthRouter() {
         return res.status(400).json({ error: "username, age, and address are required and age must be a number" });
       }
 
-      const { success, user, error } = await createUserProfile({
-        id: user_id,
-        email,
-        username,
-        age: normalizedAge,
-        address,
-      });
+      // Check if user already exists
+      const { data: existingUser, error: checkError } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", user_id)
+        .maybeSingle();
 
-      if (!success) {
-        console.error("Failed to create user profile:", error);
-        return res.status(400).json({ error: error.message || "User creation failed" });
+      if (checkError) {
+        console.error("Failed to check user existence:", checkError);
+        return res.status(500).json({ error: "Failed to check user existence" });
+      }
+
+      let user;
+      if (existingUser) {
+        // User exists, update the profile
+        const now = new Date().toISOString();
+        const { data: updatedUser, error: updateError } = await supabase
+          .from("users")
+          .update({
+            email,
+            username,
+            age: normalizedAge,
+            address,
+            updated_at: now,
+          })
+          .eq("id", user_id)
+          .select()
+          .single();
+
+        if (updateError) {
+          console.error("Failed to update user profile:", updateError);
+          return res.status(400).json({ error: updateError.message || "User update failed" });
+        }
+
+        user = updatedUser;
+      } else {
+        // User doesn't exist, create new profile
+        const { success, user: newUser, error } = await createUserProfile({
+          id: user_id,
+          email,
+          username,
+          age: normalizedAge,
+          address,
+        });
+
+        if (!success) {
+          console.error("Failed to create user profile:", error);
+          return res.status(400).json({ error: error.message || "User creation failed" });
+        }
+
+        user = newUser;
       }
 
       const preferencesUnits = [
@@ -110,28 +150,55 @@ export function createAuthRouter() {
         { id: crypto.randomUUID(), user_id, name: "luminosity", symbol: "lux" },
       ];
 
-      const { error: unitsError } = await supabase
+      // Check if preferences already exist
+      const { data: existingUnits, error: unitsCheckError } = await supabase
         .from("preferences_unit")
-        .insert(preferencesUnits);
+        .select("id")
+        .eq("user_id", user_id);
 
-      if (unitsError) {
-        console.error("Failed to insert preferences_unit records:", unitsError);
-        return res.status(500).json({ error: "Failed to create user preferences" });
+      if (unitsCheckError) {
+        console.error("Failed to check existing preferences_unit:", unitsCheckError);
+        return res.status(500).json({ error: "Failed to check user preferences" });
       }
 
-      const { error: languageError } = await supabase
-        .from("preferences_language")
-        .insert([
-          {
-            id: crypto.randomUUID(),
-            user_id,
-            language: "english",
-          },
-        ]);
+      if (!existingUnits || existingUnits.length === 0) {
+        const { error: unitsError } = await supabase
+          .from("preferences_unit")
+          .insert(preferencesUnits);
 
-      if (languageError) {
-        console.error("Failed to insert preferences_language record:", languageError);
-        return res.status(500).json({ error: "Failed to create user language preference" });
+        if (unitsError) {
+          console.error("Failed to insert preferences_unit records:", unitsError);
+          return res.status(500).json({ error: "Failed to create user preferences" });
+        }
+      }
+
+      // Check if language preference already exists
+      const { data: existingLanguage, error: languageCheckError } = await supabase
+        .from("preferences_language")
+        .select("id")
+        .eq("user_id", user_id)
+        .maybeSingle();
+
+      if (languageCheckError) {
+        console.error("Failed to check existing preferences_language:", languageCheckError);
+        return res.status(500).json({ error: "Failed to check user language preference" });
+      }
+
+      if (!existingLanguage) {
+        const { error: languageError } = await supabase
+          .from("preferences_language")
+          .insert([
+            {
+              id: crypto.randomUUID(),
+              user_id,
+              language: "english",
+            },
+          ]);
+
+        if (languageError) {
+          console.error("Failed to insert preferences_language record:", languageError);
+          return res.status(500).json({ error: "Failed to create user language preference" });
+        }
       }
 
       // Create welcome notification
@@ -141,7 +208,7 @@ export function createAuthRouter() {
         // Continue with success response even if notification fails
       }
 
-      return res.status(201).json({ message: "User created successfully", user });
+      return res.status(201).json({ message: "User setup completed successfully", user });
     } catch (err) {
       console.error("signupSetup failed:", err);
       return res.status(500).json({ error: "Failed to complete signup setup" });

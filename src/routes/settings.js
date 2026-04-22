@@ -47,7 +47,9 @@ export function createSettingsRouter() {
 
       if (unitError) {
         console.error("Failed to fetch preference units:", unitError);
-        return res.status(500).json({ error: "Failed to fetch user preferences" });
+        return res
+          .status(500)
+          .json({ error: "Failed to fetch user preferences" });
       }
 
       const displayUnits = {
@@ -138,10 +140,16 @@ export function createSettingsRouter() {
         return res.status(400).json({ error: "name and unit are required" });
       }
 
-      const validNames = ["temperature", "humidity", "soil moisture", "luminosity"];
+      const validNames = [
+        "temperature",
+        "humidity",
+        "soil moisture",
+        "luminosity",
+      ];
       if (!validNames.includes(name.toLowerCase())) {
         return res.status(400).json({
-          error: "Invalid unit name. Must be one of: temperature, humidity, soil moisture, luminosity",
+          error:
+            "Invalid unit name. Must be one of: temperature, humidity, soil moisture, luminosity",
         });
       }
 
@@ -154,7 +162,9 @@ export function createSettingsRouter() {
 
       if (error) {
         console.error("Failed to update preference unit:", error);
-        return res.status(500).json({ error: "Failed to update preference unit" });
+        return res
+          .status(500)
+          .json({ error: "Failed to update preference unit" });
       }
 
       if (!data || data.length === 0) {
@@ -170,7 +180,9 @@ export function createSettingsRouter() {
       });
     } catch (err) {
       console.error("Failed to update unit preference:", err);
-      return res.status(500).json({ error: "Failed to update unit preference" });
+      return res
+        .status(500)
+        .json({ error: "Failed to update unit preference" });
     }
   });
 
@@ -212,7 +224,9 @@ export function createSettingsRouter() {
 
       if (error) {
         console.error("Failed to update preference language:", error);
-        return res.status(500).json({ error: "Failed to update preference language" });
+        return res
+          .status(500)
+          .json({ error: "Failed to update preference language" });
       }
 
       if (!data || data.length === 0) {
@@ -227,7 +241,141 @@ export function createSettingsRouter() {
       });
     } catch (err) {
       console.error("Failed to update language preference:", err);
-      return res.status(500).json({ error: "Failed to update language preference" });
+      return res
+        .status(500)
+        .json({ error: "Failed to update language preference" });
+    }
+  });
+
+  router.post("/editProfile", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : req.body?.token;
+
+    if (!token) {
+      return res.status(401).json({ error: "Authorization token is required" });
+    }
+
+    try {
+      const { unauthorized, user_id } = await verifyUser(token);
+
+      if (unauthorized) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      const { username, email, address, age, currentPassword, newPassword } =
+        req.body;
+
+      // Check for duplicate email (excluding current user)
+      if (email) {
+        const { data: emailExists } = await supabase
+          .from("users")
+          .select("id")
+          .eq("email", email)
+          .neq("id", user_id)
+          .maybeSingle();
+
+        if (emailExists) {
+          return res.status(409).json({ error: "Email is already used" });
+        }
+      }
+
+      // Check for duplicate username (excluding current user)
+      if (username) {
+        const { data: usernameExists } = await supabase
+          .from("users")
+          .select("id")
+          .eq("username", username)
+          .neq("id", user_id)
+          .maybeSingle();
+
+        if (usernameExists) {
+          return res.status(409).json({ error: "Username is already used" });
+        }
+      }
+
+      // Get current user email for password verification
+      const { data: userData, error: userFetchError } = await supabase
+        .from("users")
+        .select("email")
+        .eq("id", user_id)
+        .single();
+
+      if (userFetchError || !userData?.email) {
+        console.error("Failed to fetch user:", userFetchError);
+        return res.status(500).json({ error: "Failed to fetch user data" });
+      }
+
+      // Handle password change
+      const passwordBothEmpty = !currentPassword && !newPassword;
+      const passwordBothProvided = currentPassword && newPassword;
+
+      if (!passwordBothEmpty && !passwordBothProvided) {
+        return res.status(400).json({
+          error:
+            "Both currentPassword and newPassword must be provided together or both empty",
+        });
+      }
+
+      if (passwordBothProvided) {
+        // Validate new password length
+        if (newPassword.length < 6) {
+          return res.status(400).json({
+            error: "New password must contain more than 6 characters",
+          });
+        }
+
+        // Verify current password by attempting sign in
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: userData.email,
+          password: currentPassword,
+        });
+
+        if (signInError) {
+          console.error("Current password verification failed:", signInError);
+          return res
+            .status(401)
+            .json({ error: "Current password is incorrect" });
+        }
+        // Use the ADMIN API instead
+        const { data: updatedAuthUser, error: updateAuthError } =
+          await supabase.auth.admin.updateUserById(
+            user_id, // You must pass the ID here explicitly
+            { password: newPassword },
+          );
+
+        if (updateAuthError) {
+          console.error("Failed to update password:", updateAuthError);
+          return res.status(500).json({ error: "Failed to update password" });
+        }
+      }
+
+      // Update user profile in users table
+      const updateData = {};
+      if (username !== undefined) updateData.username = username;
+      if (email !== undefined) updateData.email = email;
+      if (address !== undefined) updateData.address = address;
+      if (age !== undefined) updateData.age = Number(age);
+      updateData.updated_at = new Date().toISOString();
+
+      const { data: updatedUser, error: updateError } = await supabase
+        .from("users")
+        .update(updateData)
+        .eq("id", user_id)
+        .select();
+      if (updateError) {
+        console.error("Failed to update user profile:", updateError);
+        return res.status(500).json({ error: "Failed to update user profile" });
+      }
+
+      return res.status(200).json({
+        message: "Profile updated successfully",
+        user: updatedUser?.[0] || null,
+      });
+    } catch (err) {
+      console.error("Failed to edit profile:", err);
+      return res.status(500).json({ error: "Failed to edit profile" });
     }
   });
 
