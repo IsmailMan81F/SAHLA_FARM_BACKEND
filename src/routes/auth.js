@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import { supabase } from "../libs/supabaseClient.js";
 import { verifyUser } from "../services/authService.js";
 import { createUserProfile, updateUserLastLogin } from "../services/userService.js";
@@ -37,76 +38,27 @@ export function createAuthRouter() {
   });
 
   router.post("/signup", async (req, res) => {
-    const { email, username, age, password, address } = req.body;
+    const { email, password } = req.body;
 
-    if (!email || !username || !password || !address || age === undefined) {
-      return res.status(400).json({
-        error: "Email, username, password, age, and address are required",
-      });
-    }
-
-    const normalizedAge = Number(age);
-    if (Number.isNaN(normalizedAge)) {
-      return res.status(400).json({ error: "Age must be a valid number" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
     }
 
     try {
-      // Check if email already exists in users table
-      const { data: existingEmail } = await supabase
-        .from("users")
-        .select("id")
-        .eq("email", email)
-        .single();
-
-      if (existingEmail) {
-        return res.status(409).json({ error: "User already exists" });
-      }
-
-      // Check if username already exists in users table
-      const { data: existingUsername } = await supabase
-        .from("users")
-        .select("id")
-        .eq("username", username)
-        .single();
-
-      if (existingUsername) {
-        return res.status(409).json({ error: "User already exists" });
-      }
-
-      // Create auth user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signUpWithPassword({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
       });
 
-      if (authError || !authData?.user?.id) {
-        console.error("Auth signup failed:", authError);
-        return res.status(400).json({ error: authError?.message || "Signup failed" });
-      }
-
-      // Create user profile in users table
-      const now = new Date().toISOString();
-      const { data: userData, error: userError } = await supabase.from("users").insert([
-        {
-          id: authData.user.id,
-          email,
-          username,
-          age: normalizedAge,
-          address,
-          created_at: now,
-          updated_at: now,
-        },
-      ]);
-
-      if (userError) {
-        console.error("Failed to create user profile:", userError);
-        return res.status(400).json({ error: "Failed to create user profile" });
+      if (error || !data?.user?.id) {
+        console.error("Signup failed:", error);
+        return res.status(400).json({ error: error?.message || "Signup failed" });
       }
 
       return res.status(201).json({
-        message: "User registered successfully",
-        user_id: authData.user.id,
-        token: authData.session?.access_token || null,
+        message: "User created successfully",
+        user_id: data.user.id,
+        token: data.session?.access_token || null,
       });
     } catch (err) {
       console.error("Signup error:", err);
@@ -149,6 +101,37 @@ export function createAuthRouter() {
       if (!success) {
         console.error("Failed to create user profile:", error);
         return res.status(400).json({ error: error.message || "User creation failed" });
+      }
+
+      const preferencesUnits = [
+        { id: crypto.randomUUID(), user_id, name: "temperature", symbol: "°C" },
+        { id: crypto.randomUUID(), user_id, name: "humidity", symbol: "%" },
+        { id: crypto.randomUUID(), user_id, name: "soil moisture", symbol: "%" },
+        { id: crypto.randomUUID(), user_id, name: "luminosity", symbol: "lux" },
+      ];
+
+      const { error: unitsError } = await supabase
+        .from("preferences_unit")
+        .insert(preferencesUnits);
+
+      if (unitsError) {
+        console.error("Failed to insert preferences_unit records:", unitsError);
+        return res.status(500).json({ error: "Failed to create user preferences" });
+      }
+
+      const { error: languageError } = await supabase
+        .from("preferences_language")
+        .insert([
+          {
+            id: crypto.randomUUID(),
+            user_id,
+            language: "english",
+          },
+        ]);
+
+      if (languageError) {
+        console.error("Failed to insert preferences_language record:", languageError);
+        return res.status(500).json({ error: "Failed to create user language preference" });
       }
 
       // Create welcome notification
