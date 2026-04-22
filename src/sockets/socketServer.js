@@ -27,7 +27,6 @@ export function registerSocketHandlers(io, actualState, stateEmitter) {
       actuators: "actuator_changed",
       warnings: "warning_changed",
       recommendation: "recommendation_changed",
-      initial_state: "initial_state",
     }[update.field] || "state_changed";
 
     io.emit(eventName, update);

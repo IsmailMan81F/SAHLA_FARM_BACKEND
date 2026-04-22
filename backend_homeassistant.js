@@ -268,7 +268,7 @@ socket.on("message", (msg) => {
       });
 
       actualState = { crop, sensors, actuators, recommendation, warnings };
-      stateEmitter.emit("state_update", { field: "initial_state", value: actualState });
+      
     }
   }
 });

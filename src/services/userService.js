@@ -21,3 +21,15 @@ export async function createUserProfile({ id, email, username, age, address }) {
 
   return { success: true, user: data?.[0] ?? null };
 }
+
+export async function updateUserLastLogin(user_id) {
+  const now = new Date().toISOString();
+
+  const { data, error } = await supabase.from("users").update({ last_login_at: now }).eq("id", user_id);
+
+  if (error) {
+    return { success: false, error };
+  }
+
+  return { success: true, user: data?.[0] ?? null };
+}
