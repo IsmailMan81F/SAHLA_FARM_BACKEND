@@ -174,4 +174,62 @@ export function createSettingsRouter() {
     }
   });
 
-  return router;}
+  router.post("/editLanguage", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : req.body?.token;
+
+    if (!token) {
+      return res.status(401).json({ error: "Authorization token is required" });
+    }
+
+    try {
+      const { unauthorized, user_id } = await verifyUser(token);
+
+      if (unauthorized) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      const { language } = req.body;
+
+      if (!language) {
+        return res.status(400).json({ error: "language is required" });
+      }
+
+      const validLanguages = ["arabic", "english", "french"];
+      if (!validLanguages.includes(language.toLowerCase())) {
+        return res.status(400).json({
+          error: "Invalid language. Must be one of: arabic, english, french",
+        });
+      }
+
+      const { data, error } = await supabase
+        .from("preferences_language")
+        .update({ language: language.toLowerCase() })
+        .eq("user_id", user_id)
+        .select();
+
+      if (error) {
+        console.error("Failed to update preference language:", error);
+        return res.status(500).json({ error: "Failed to update preference language" });
+      }
+
+      if (!data || data.length === 0) {
+        return res.status(404).json({ error: "Language preference not found" });
+      }
+
+      return res.status(200).json({
+        message: "Language preference updated successfully",
+        data: {
+          language: formatLanguage(data[0].language),
+        },
+      });
+    } catch (err) {
+      console.error("Failed to update language preference:", err);
+      return res.status(500).json({ error: "Failed to update language preference" });
+    }
+  });
+
+  return router;
+}
