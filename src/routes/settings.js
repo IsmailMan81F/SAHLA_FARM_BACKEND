@@ -1,4 +1,5 @@
 import express from "express";
+import crypto from "crypto";
 import { supabase } from "../libs/supabaseClient.js";
 import { verifyUser } from "../services/authService.js";
 import { verifyHomeassistantCredentials } from "../services/homeassistantService.js";
@@ -7,6 +8,129 @@ function formatLanguage(value) {
   if (!value) return "English";
   const normalized = String(value).toLowerCase();
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
+function normalizeUrl(url) {
+  return url.replace(/\/$/, "");
+}
+
+// Generate safe 20-char ID
+function generateHaId() {
+  return crypto.randomBytes(10).toString("hex"); // 20 chars
+}
+
+// Call Home Assistant helper state
+async function getHaHelper(haUrl, haToken) {
+  const res = await fetch(
+    `${normalizeUrl(haUrl)}/api/states/input_text.ha_instance_id`,
+    {
+      headers: {
+        Authorization: `Bearer ${haToken}`,
+        Accept: "application/json",
+      },
+    },
+  );
+
+  if (!res.ok) return null;
+
+  const data = await res.json();
+
+  return data?.state || null;
+}
+
+// Create helper in Home Assistant
+async function createHaHelper(haUrl, haToken, value) {
+  const base = normalizeUrl(haUrl);
+
+  // Step 1: Create via config API
+  const createRes = await fetch(
+    `${base}/api/config/input_text/config/ha_instance_id`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${haToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ name: "HA Instance ID", max: 255 }),
+    },
+  );
+
+  console.log("Create status:", createRes.status, await createRes.text());
+
+  // Step 2: Reload the integration
+  await fetch(`${base}/api/services/input_text/reload`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${haToken}` },
+  });
+
+  // Step 3: Wait for HA to register the entity
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  // Step 4: Set the value
+  await fetch(`${base}/api/services/input_text/set_value`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${haToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ entity_id: "input_text.ha_instance_id", value }),
+  });
+}
+
+// Get or create farm
+async function getOrCreateFarm(ha_instance_id, haUrl, supabase) {
+  const { data: farm } = await supabase
+    .from("farm")
+    .select("*")
+    .eq("ha_instance_id", ha_instance_id)
+    .maybeSingle();
+
+  if (farm) {
+    // update URL if changed (ngrok case)
+    await supabase.from("farm").update({ ha_url: haUrl }).eq("id", farm.id);
+
+    return farm.id;
+  }
+
+  // create new farm
+  const farm_id = crypto.randomUUID();
+
+  await supabase.from("farm").insert([
+    {
+      id: farm_id,
+      ha_url: haUrl,
+      ha_instance_id,
+    },
+  ]);
+
+  return farm_id;
+}
+
+// Reuse token logic
+async function handleUserTokens(user_id, haToken, supabase, farm_id) {
+  const { data: userHaTokens } = await supabase
+    .from("user_ha")
+    .select("ha_token")
+    .eq("user_id", user_id);
+
+  for (const { ha_token } of userHaTokens || []) {
+    await supabase
+      .from("farm_tokens")
+      .update({ status: "expired" })
+      .eq("ha_token", ha_token);
+  }
+
+  await supabase.from("farm_tokens").insert([
+    {
+      id: crypto.randomUUID(),
+      farm_id,
+      ha_token: haToken,
+      status: "active",
+      created_at: new Date().toISOString(),
+      last_used_at: new Date().toISOString(),
+      owner_user_id: user_id,
+    },
+  ]);
 }
 
 export function createSettingsRouter() {
@@ -376,6 +500,257 @@ export function createSettingsRouter() {
     } catch (err) {
       console.error("Failed to edit profile:", err);
       return res.status(500).json({ error: "Failed to edit profile" });
+    }
+  });
+
+  router.post("/editAvatarUrl", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : req.body?.token;
+
+    if (!token) {
+      return res.status(401).json({ error: "Authorization token is required" });
+    }
+
+    try {
+      const { unauthorized, user_id } = await verifyUser(token);
+
+      if (unauthorized) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      const { avatarUrl } = req.body;
+
+      if (!avatarUrl) {
+        return res.status(400).json({ error: "avatarUrl is required" });
+      }
+
+      const { data, error } = await supabase
+        .from("users")
+        .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+        .eq("id", user_id)
+        .select();
+
+      if (error) {
+        console.error("Failed to update avatar:", error);
+        return res.status(500).json({ error: "Failed to update avatar" });
+      }
+
+      if (!data || data.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      return res.status(200).json({
+        message: "Avatar updated successfully",
+        data: {
+          avatarUrl: data[0].avatar_url,
+        },
+      });
+    } catch (err) {
+      console.error("Failed to update avatar:", err);
+      return res.status(500).json({ error: "Failed to update avatar" });
+    }
+  });
+
+  router.post("/editHaCredentials", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : req.body?.token;
+
+    if (!token) {
+      return res.status(401).json({ error: "Authorization token is required" });
+    }
+
+    try {
+      const { unauthorized, user_id } = await verifyUser(token);
+      if (unauthorized) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      const { haUrl, haToken } = req.body;
+      if (!haUrl || !haToken) {
+        return res
+          .status(400)
+          .json({ error: "haUrl and haToken are required" });
+      }
+
+      const baseUrl = normalizeUrl(haUrl);
+
+      // ===============================
+      // 1. VERIFY HA IS REACHABLE
+      // ===============================
+      let haResponse;
+      try {
+        haResponse = await fetch(`${baseUrl}/api/config`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${haToken}`,
+            Accept: "application/json",
+          },
+        });
+      } catch (fetchError) {
+        console.error("Failed to reach Home Assistant:", fetchError);
+        return res
+          .status(503)
+          .json({
+            status: "offline",
+            error: "Home Assistant server is unreachable",
+          });
+      }
+
+      if (!haResponse.ok) {
+        return res
+          .status(401)
+          .json({
+            status: "offline",
+            error: "Invalid Home Assistant credentials",
+          });
+      }
+
+      // ===============================
+      // 2. CHECK THE HELPER VALUE
+      // ===============================
+      const helperRes = await fetch(
+        `${baseUrl}/api/states/input_text.ha_instance_id`,
+        {
+          headers: {
+            Authorization: `Bearer ${haToken}`,
+            Accept: "application/json",
+          },
+        },
+      );
+
+      let ha_instance_id = null;
+
+      if (helperRes.ok) {
+        const helperData = await helperRes.json();
+        const helperValue = helperData?.state;
+
+        if (
+          !helperValue ||
+          helperValue === "unknown" ||
+          helperValue.trim() === ""
+        ) {
+          // ── Helper exists but is EMPTY → write a new ID into it
+          ha_instance_id = generateHaId();
+
+          await fetch(`${baseUrl}/api/services/input_text/set_value`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${haToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              entity_id: "input_text.ha_instance_id",
+              value: ha_instance_id,
+            }),
+          });
+        } else {
+          // ── Helper exists and has a VALUE → use it
+          ha_instance_id = helperValue;
+        }
+      } else {
+        // ── Helper does NOT exist → return error, user must create it manually in HA
+        return res.status(400).json({
+          status: "offline",
+          error:
+            "input_text.ha_instance_id helper not found. Please create it manually in Home Assistant (Settings > Helpers > Add Helper > Text).",
+        });
+      }
+
+      // ===============================
+      // 3. FIND OR CREATE FARM
+      // ===============================
+      const { data: existingFarm, error: farmCheckError } = await supabase
+        .from("farm")
+        .select("id, ha_url")
+        .eq("ha_instance_id", ha_instance_id)
+        .maybeSingle();
+
+      if (farmCheckError) {
+        console.error("Failed to check existing farm:", farmCheckError);
+        return res.status(500).json({ error: "Failed to check existing farm" });
+      }
+
+      let farm_id;
+
+      if (existingFarm) {
+        // Farm found → update URL in case it changed (e.g. ngrok)
+        await supabase
+          .from("farm")
+          .update({ ha_url: haUrl })
+          .eq("id", existingFarm.id);
+        farm_id = existingFarm.id;
+      } else {
+        // Farm not found → create a new one
+        farm_id = crypto.randomUUID();
+        const { error: newFarmError } = await supabase
+          .from("farm")
+          .insert([{ id: farm_id, ha_url: haUrl, ha_instance_id }]);
+
+        if (newFarmError) {
+          console.error("Failed to create farm:", newFarmError);
+          return res.status(500).json({ error: "Failed to create farm" });
+        }
+      }
+
+      // ===============================
+      // 4. EXPIRE OLD TOKENS & INSERT NEW ONE
+      // ===============================
+
+      // Fetch all previous HA tokens for this user
+      const { data: userHaTokens, error: userHaError } = await supabase
+        .from("user_ha")
+        .select("ha_token")
+        .eq("user_id", user_id);
+
+      if (userHaError) {
+        console.error("Failed to fetch user HA tokens:", userHaError);
+        return res
+          .status(500)
+          .json({ error: "Failed to fetch user HA tokens" });
+      }
+
+      // Mark all previous tokens as expired
+      for (const { ha_token } of userHaTokens || []) {
+        await supabase
+          .from("farm_tokens")
+          .update({ status: "expired" })
+          .eq("ha_token", ha_token);
+      }
+
+      // Insert the new active token
+      const { error: activeTokenError } = await supabase
+        .from("farm_tokens")
+        .insert([
+          {
+            farm_id,
+            ha_token: haToken,
+            status: "active",
+            created_at: new Date().toISOString(),
+            last_used_at: new Date().toISOString(),
+            owner_user_id: user_id,
+          },
+        ]);
+
+      if (activeTokenError) {
+        console.error("Failed to insert active farm token:", activeTokenError);
+        return res.status(500).json({ error: "Failed to store farm token" });
+      }
+
+      // ===============================
+      // 5. DONE
+      // ===============================
+      return res.status(200).json({
+        status: "online",
+        message: "Home Assistant credentials updated successfully",
+        data: { farm_id, ha_instance_id },
+      });
+    } catch (err) {
+      console.error("Failed to edit HA credentials:", err);
+      return res.status(500).json({ error: "Failed to edit HA credentials" });
     }
   });
 
