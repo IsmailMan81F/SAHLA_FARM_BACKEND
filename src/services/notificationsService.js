@@ -32,10 +32,9 @@ export async function fetchUserUnreadNotifications(user_id, limit) {
 
 export async function fetchFarmNotifications(farm_id, limit) {
   const { data, error } = await supabase
-    .from("notifications_farm")
+    .from("notification_farm")
     .select("notification_id")
     .eq("farm_id", farm_id)
-    .order("timestamp", { ascending: false })
     .limit(limit);
 
   if (error) {
@@ -58,4 +57,39 @@ export async function fetchFarmNotifications(farm_id, limit) {
   }
 
   return { success: true, notifications };
+}
+
+export async function updateNotificationStatus(user_id, notification_id, status) {
+  if (!status || !["read", "unread"].includes(status)) {
+    return { success: false, error: "Invalid status. Must be 'read' or 'unread'" };
+  }
+
+  const { data, error } = await supabase
+    .from("notification_user")
+    .update({ status })
+    .eq("user_id", user_id)
+    .eq("notification_id", notification_id);
+
+  if (error) {
+    return { success: false, error };
+  }
+
+  return { success: true, data };
+}
+
+export async function updateAllNotificationStatus(user_id, status) {
+  if (!status || !["read", "unread"].includes(status)) {
+    return { success: false, error: "Invalid status. Must be 'read' or 'unread'" };
+  }
+
+  const { data, error } = await supabase
+    .from("notification_user")
+    .update({ status })
+    .eq("user_id", user_id);
+
+  if (error) {
+    return { success: false, error };
+  }
+
+  return { success: true, data };
 }
