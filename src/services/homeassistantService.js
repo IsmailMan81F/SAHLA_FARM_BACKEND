@@ -30,6 +30,8 @@ export async function verifyHomeassistantCredentials(user_id) {
       continue;
     }
 
+    console.log(ha_token)
+
     const { data: farmTokenRow, error: farmTokenError } = await supabase
       .from("farm_tokens")
       .select("farm_id")

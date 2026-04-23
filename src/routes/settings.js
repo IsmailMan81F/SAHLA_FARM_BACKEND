@@ -38,100 +38,6 @@ async function getHaHelper(haUrl, haToken) {
   return data?.state || null;
 }
 
-// Create helper in Home Assistant
-async function createHaHelper(haUrl, haToken, value) {
-  const base = normalizeUrl(haUrl);
-
-  // Step 1: Create via config API
-  const createRes = await fetch(
-    `${base}/api/config/input_text/config/ha_instance_id`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${haToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ name: "HA Instance ID", max: 255 }),
-    },
-  );
-
-  console.log("Create status:", createRes.status, await createRes.text());
-
-  // Step 2: Reload the integration
-  await fetch(`${base}/api/services/input_text/reload`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${haToken}` },
-  });
-
-  // Step 3: Wait for HA to register the entity
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  // Step 4: Set the value
-  await fetch(`${base}/api/services/input_text/set_value`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${haToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ entity_id: "input_text.ha_instance_id", value }),
-  });
-}
-
-// Get or create farm
-async function getOrCreateFarm(ha_instance_id, haUrl, supabase) {
-  const { data: farm } = await supabase
-    .from("farm")
-    .select("*")
-    .eq("ha_instance_id", ha_instance_id)
-    .maybeSingle();
-
-  if (farm) {
-    // update URL if changed (ngrok case)
-    await supabase.from("farm").update({ ha_url: haUrl }).eq("id", farm.id);
-
-    return farm.id;
-  }
-
-  // create new farm
-  const farm_id = crypto.randomUUID();
-
-  await supabase.from("farm").insert([
-    {
-      id: farm_id,
-      ha_url: haUrl,
-      ha_instance_id,
-    },
-  ]);
-
-  return farm_id;
-}
-
-// Reuse token logic
-async function handleUserTokens(user_id, haToken, supabase, farm_id) {
-  const { data: userHaTokens } = await supabase
-    .from("user_ha")
-    .select("ha_token")
-    .eq("user_id", user_id);
-
-  for (const { ha_token } of userHaTokens || []) {
-    await supabase
-      .from("farm_tokens")
-      .update({ status: "expired" })
-      .eq("ha_token", ha_token);
-  }
-
-  await supabase.from("farm_tokens").insert([
-    {
-      id: crypto.randomUUID(),
-      farm_id,
-      ha_token: haToken,
-      status: "active",
-      created_at: new Date().toISOString(),
-      last_used_at: new Date().toISOString(),
-      owner_user_id: user_id,
-    },
-  ]);
-}
 
 export function createSettingsRouter() {
   const router = express.Router();
@@ -721,23 +627,83 @@ export function createSettingsRouter() {
           .eq("ha_token", ha_token);
       }
 
-      // Insert the new active token
-      const { error: activeTokenError } = await supabase
+      // Check whether the same active token already exists for this farm/user
+      const { data: existingToken, error: existingTokenError } = await supabase
         .from("farm_tokens")
-        .insert([
-          {
-            farm_id,
-            ha_token: haToken,
-            status: "active",
-            created_at: new Date().toISOString(),
-            last_used_at: new Date().toISOString(),
-            owner_user_id: user_id,
-          },
-        ]);
+        .select("status")
+        .eq("farm_id", farm_id)
+        .eq("ha_token", haToken)
+        .maybeSingle();
 
-      if (activeTokenError) {
-        console.error("Failed to insert active farm token:", activeTokenError);
-        return res.status(500).json({ error: "Failed to store farm token" });
+      if (existingTokenError) {
+        console.error("Failed to check existing farm token:", existingTokenError);
+        return res.status(500).json({ error: "Failed to check existing farm token" });
+      }
+
+      if (existingToken?.status === "active") {
+        // The same active token has already been stored, no need to insert again.
+      } else if (existingToken) {
+        const { error: updateTokenError } = await supabase
+          .from("farm_tokens")
+          .update({
+            status: "active",
+            last_used_at: new Date().toISOString(),
+          })
+          .eq("id", existingToken.id);
+
+        if (updateTokenError) {
+          console.error("Failed to reactivate existing farm token:", updateTokenError);
+          return res.status(500).json({ error: "Failed to store farm token" });
+        }
+      } else {
+        const { error: activeTokenError } = await supabase
+          .from("farm_tokens")
+          .insert([
+            {
+              farm_id,
+              ha_token: haToken,
+              status: "active",
+              created_at: new Date().toISOString(),
+              last_used_at: new Date().toISOString(),
+              owner_user_id: user_id,
+            },
+          ]);
+
+        if (activeTokenError) {
+          console.error("Failed to insert active farm token:", activeTokenError);
+          return res.status(500).json({ error: "Failed to store farm token" });
+        }
+      }
+
+      // ===============================
+      // 4b. INSERT USER_HA IF NOT EXISTS
+      // ===============================
+      const { data: existingUserHa, error: existingUserHaError } = await supabase
+        .from("user_ha")
+        .select()
+        .eq("user_id", user_id)
+        .eq("ha_token", haToken)
+        .maybeSingle();
+
+      if (existingUserHaError) {
+        console.error("Failed to check existing user_ha:", existingUserHaError);
+        return res.status(500).json({ error: "Failed to check existing user_ha" });
+      }
+
+      if (!existingUserHa) {
+        const { error: userHaError } = await supabase
+          .from("user_ha")
+          .insert([
+            {
+              user_id,
+              ha_token: haToken,
+            },
+          ]);
+
+        if (userHaError) {
+          console.error("Failed to insert user_ha:", userHaError);
+          return res.status(500).json({ error: "Failed to store user HA token" });
+        }
       }
 
       // ===============================
