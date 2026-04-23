@@ -38,7 +38,6 @@ async function getHaHelper(haUrl, haToken) {
   return data?.state || null;
 }
 
-
 export function createSettingsRouter() {
   const router = express.Router();
 
@@ -498,21 +497,17 @@ export function createSettingsRouter() {
         });
       } catch (fetchError) {
         console.error("Failed to reach Home Assistant:", fetchError);
-        return res
-          .status(503)
-          .json({
-            status: "offline",
-            error: "Home Assistant server is unreachable",
-          });
+        return res.status(503).json({
+          status: "offline",
+          error: "Home Assistant server is unreachable",
+        });
       }
 
       if (!haResponse.ok) {
-        return res
-          .status(401)
-          .json({
-            status: "offline",
-            error: "Invalid Home Assistant credentials",
-          });
+        return res.status(401).json({
+          status: "offline",
+          error: "Invalid Home Assistant credentials",
+        });
       }
 
       // ===============================
@@ -630,29 +625,38 @@ export function createSettingsRouter() {
       // Check whether the same active token already exists for this farm/user
       const { data: existingToken, error: existingTokenError } = await supabase
         .from("farm_tokens")
-        .select("status")
+        .select()
         .eq("farm_id", farm_id)
         .eq("ha_token", haToken)
         .maybeSingle();
 
       if (existingTokenError) {
-        console.error("Failed to check existing farm token:", existingTokenError);
-        return res.status(500).json({ error: "Failed to check existing farm token" });
+        console.error(
+          "Failed to check existing farm token:",
+          existingTokenError,
+        );
+        return res
+          .status(500)
+          .json({ error: "Failed to check existing farm token" });
       }
 
       if (existingToken?.status === "active") {
         // The same active token has already been stored, no need to insert again.
       } else if (existingToken) {
+        console.log(existingToken)
         const { error: updateTokenError } = await supabase
           .from("farm_tokens")
           .update({
             status: "active",
             last_used_at: new Date().toISOString(),
           })
-          .eq("id", existingToken.id);
+          .eq("ha_token", existingToken.ha_token);
 
         if (updateTokenError) {
-          console.error("Failed to reactivate existing farm token:", updateTokenError);
+          console.error(
+            "Failed to reactivate existing farm token:",
+            updateTokenError,
+          );
           return res.status(500).json({ error: "Failed to store farm token" });
         }
       } else {
@@ -670,7 +674,10 @@ export function createSettingsRouter() {
           ]);
 
         if (activeTokenError) {
-          console.error("Failed to insert active farm token:", activeTokenError);
+          console.error(
+            "Failed to insert active farm token:",
+            activeTokenError,
+          );
           return res.status(500).json({ error: "Failed to store farm token" });
         }
       }
@@ -678,31 +685,34 @@ export function createSettingsRouter() {
       // ===============================
       // 4b. INSERT USER_HA IF NOT EXISTS
       // ===============================
-      const { data: existingUserHa, error: existingUserHaError } = await supabase
-        .from("user_ha")
-        .select()
-        .eq("user_id", user_id)
-        .eq("ha_token", haToken)
-        .maybeSingle();
+      const { data: existingUserHa, error: existingUserHaError } =
+        await supabase
+          .from("user_ha")
+          .select()
+          .eq("user_id", user_id)
+          .eq("ha_token", haToken)
+          .maybeSingle();
 
       if (existingUserHaError) {
         console.error("Failed to check existing user_ha:", existingUserHaError);
-        return res.status(500).json({ error: "Failed to check existing user_ha" });
+        return res
+          .status(500)
+          .json({ error: "Failed to check existing user_ha" });
       }
 
       if (!existingUserHa) {
-        const { error: userHaError } = await supabase
-          .from("user_ha")
-          .insert([
-            {
-              user_id,
-              ha_token: haToken,
-            },
-          ]);
+        const { error: userHaError } = await supabase.from("user_ha").insert([
+          {
+            user_id,
+            ha_token: haToken,
+          },
+        ]);
 
         if (userHaError) {
           console.error("Failed to insert user_ha:", userHaError);
-          return res.status(500).json({ error: "Failed to store user HA token" });
+          return res
+            .status(500)
+            .json({ error: "Failed to store user HA token" });
         }
       }
 
