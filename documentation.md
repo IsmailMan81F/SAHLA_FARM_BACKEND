@@ -1,8 +1,7 @@
 # SAHLA FARM BACKEND API Documentation
 
-Base URL: `https://your-api-domain.com/api`
+Base URL: `https://backend-server.com/api`
 
-> **Note:** All endpoints (except `/login` and `/signup`) require a Bearer access token for authentication.
 
 ---
 
@@ -16,71 +15,7 @@ Base URL: `https://your-api-domain.com/api`
 
 ## Auth Endpoints
 
-### 1. POST /auth/login
-
-Login with email and password to obtain an access token.
-
-**Endpoint:**
-```
-POST /api/auth/login
-```
-
-**Goal:** Authenticate user and return access token for subsequent requests.
-
-**Request Format:**
-```json
-{
-  "email": "user@example.com",
-  "password": "your_password"
-}
-```
-
-**Bearer:** Not required for this endpoint.
-
-**Possible Responses:**
-
-| Status Code | Message | Possible Cause |
-|-------------|---------|-----------------|
-| 200 | `Login successful` + `token` + `user_id` | Success |
-| 400 | `Email and password are required` | Missing email or password fields |
-| 401 | `Invalid email or password` | Wrong credentials or user doesn't exist |
-| 500 | `Login failed` | Server error or Supabase unavailable |
-
----
-
-### 2. POST /auth/signup
-
-Register a new user account.
-
-**Endpoint:**
-```
-POST /api/auth/signup
-```
-
-**Goal:** Create a new user account in the system.
-
-**Request Format:**
-```json
-{
-  "email": "user@example.com",
-  "password": "your_password"
-}
-```
-
-**Bearer:** Not required for this endpoint.
-
-**Possible Responses:**
-
-| Status Code | Message | Possible Cause |
-|-------------|---------|-----------------|
-| 201 | `User created successfully` + `user_id` + `token` | Success |
-| 400 | `Email and password are required` | Missing email or password fields |
-| 400 | `Signup failed` + error message | Email already exists or invalid password |
-| 500 | `Signup failed` | Server error |
-
----
-
-### 3. POST /auth/signupSetup
+### 1. POST /auth/signupSetup
 
 Complete user profile setup after initial signup. Creates user preferences (units, language) and welcome notification.
 
@@ -90,6 +25,8 @@ POST /api/auth/signupSetup
 ```
 
 **Goal:** Finalize user profile by adding username, age, address, and initializing default preferences.
+
+**When to use:** right after validated signup (after confirming the email and before redirecting to the login page)
 
 **Request Format:**
 ```json
@@ -101,15 +38,13 @@ POST /api/auth/signupSetup
 }
 ```
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
-
 **Bearer:** Required (Bearer access token from signup).
 
 **Possible Responses:**
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 201 | `User setup completed successfully` + `user` object | Success |
+| 201 | `User setup completed successfully`  | Success |
 | 400 | `username, age, and address are required and age must be a number` | Missing or invalid fields |
 | 400 | `User update failed` + error message | Database update error |
 | 401 | `Authorization token is required` | Missing token |
@@ -118,7 +53,7 @@ POST /api/auth/signupSetup
 
 ---
 
-### 4. POST /auth/loginSetup
+### 2. POST /auth/loginSetup
 
 Update last login timestamp and create login notification.
 
@@ -129,14 +64,14 @@ POST /api/auth/loginSetup
 
 **Goal:** Track user login activity and generate a login notification.
 
+**When to use:** right after validated login (before redirecting to the home page)
+
 **Request Format:**
 ```json
 {
   // No body required if token is in Authorization header
 }
 ```
-
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
 
 **Bearer:** Required (Bearer access token).
 
@@ -154,20 +89,20 @@ POST /api/auth/loginSetup
 
 ## Settings Endpoints
 
-### 5. GET /settings/profile
+### 1. GET /settings/profile
 
 Retrieve user profile information including preferences and Home Assistant status.
 
 **Endpoint:**
 ```
-GET /api/settings/profile?token=<access_token>
+GET /api/settings/profile
 ```
 
 **Goal:** Get complete user profile with display units, language preference, and HA connection status.
 
-**Request Format:** No body required.
+**When to use:** On each access to the settings page
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or as a query parameter.
+**Request Format:** No body required.
 
 **Bearer:** Required (Bearer access token).
 
@@ -181,9 +116,31 @@ GET /api/settings/profile?token=<access_token>
 | 404 | `User profile not found` | User record doesn't exist in database |
 | 500 | `Failed to load profile settings` | Server error during preference fetch |
 
+## Example of success response : 
+```code
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "username": "3azouz",
+  "email": "anesbenaziza19@gmail.com",
+  "age": 24,
+  "address": "Sidi Bel Abbes, Algeria",
+  "avatarUrl": "https://images5.alphacoders.com/100/1005348.jpg",
+  "haUrl": "http://sahla-homeassistant.local:8123",
+  "preferences": {
+    "displayUnits": {
+      "temperature": "°C",
+      "humidity": "%",
+      "soilMoisture": "%",
+      "luminosity": "lux"
+    },
+    "language": "English"
+  }
+}
+```
+> **Note:** The farm settings (crop, ..) will be manipulated with websocket later..
 ---
 
-### 6. POST /settings/editUnit
+### 2. POST /settings/editUnit
 
 Update a display unit preference (temperature, humidity, soil moisture, luminosity).
 
@@ -193,6 +150,8 @@ POST /api/settings/editUnit
 ```
 
 **Goal:** Change how sensor values are displayed to the user.
+
+**When to use:** When clicking the choice in the unit selection
 
 **Request Format:**
 ```json
@@ -204,7 +163,6 @@ POST /api/settings/editUnit
 
 Valid `name` values: `temperature`, `humidity`, `soil moisture`, `luminosity`
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
 
 **Bearer:** Required (Bearer access token).
 
@@ -212,7 +170,7 @@ Valid `name` values: `temperature`, `humidity`, `soil moisture`, `luminosity`
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 200 | `Unit preference updated successfully` + `data` | Success |
+| 200 | `Unit preference updated successfully` | Success |
 | 400 | `name and unit are required` | Missing fields |
 | 400 | `Invalid unit name. Must be one of: temperature, humidity, soil moisture, luminosity` | Invalid unit name |
 | 401 | `Authorization token is required` | Missing token |
@@ -222,7 +180,7 @@ Valid `name` values: `temperature`, `humidity`, `soil moisture`, `luminosity`
 
 ---
 
-### 7. POST /settings/editLanguage
+### 3. POST /settings/editLanguage
 
 Update user's preferred language.
 
@@ -233,6 +191,8 @@ POST /api/settings/editLanguage
 
 **Goal:** Change the language preference for the user interface.
 
+**When to use:** When clicking the choice in the language selection
+
 **Request Format:**
 ```json
 {
@@ -242,7 +202,6 @@ POST /api/settings/editLanguage
 
 Valid `language` values: `arabic`, `english`, `french`
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
 
 **Bearer:** Required (Bearer access token).
 
@@ -250,7 +209,7 @@ Valid `language` values: `arabic`, `english`, `french`
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 200 | `Language preference updated successfully` + `data` | Success |
+| 200 | `Language preference updated successfully` | Success |
 | 400 | `language is required` | Missing language field |
 | 400 | `Invalid language. Must be one of: arabic, english, french` | Invalid language value |
 | 401 | `Authorization token is required` | Missing token |
@@ -260,7 +219,7 @@ Valid `language` values: `arabic`, `english`, `french`
 
 ---
 
-### 8. POST /settings/editProfile
+### 4. POST /settings/editProfile
 
 Update user profile information (username, email, address, age) and optionally change password.
 
@@ -270,6 +229,8 @@ POST /api/settings/editProfile
 ```
 
 **Goal:** Update user profile details or change password.
+
+**When to use:** When filling the edit profile form and clicking confirm
 
 **Request Format:**
 ```json
@@ -283,9 +244,7 @@ POST /api/settings/editProfile
 }
 ```
 
-> **Note:** `currentPassword` and `newPassword` must both be provided together to change password. Password must be more than 6 characters.
-
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
+> **Note:** `currentPassword` and `newPassword` must both be provided together to change password. Password must be more than 8 characters. (If both are empty, the password changing is ignored)
 
 **Bearer:** Required (Bearer access token).
 
@@ -293,9 +252,9 @@ POST /api/settings/editProfile
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 200 | `Profile updated successfully` + `user` object | Success |
+| 200 | `Profile updated successfully` | Success |
 | 400 | `Both currentPassword and newPassword must be provided together or both empty` | Incomplete password change request |
-| 400 | `New password must contain more than 6 characters` | Password too short |
+| 400 | `New password must contain more than 8 characters` | Password too short |
 | 401 | `Current password is incorrect` | Wrong current password provided |
 | 401 | `Authorization token is required` | Missing token |
 | 401 | `Invalid or expired token` | Token verification failed |
@@ -306,7 +265,7 @@ POST /api/settings/editProfile
 
 ---
 
-### 9. POST /settings/editAvatarUrl
+### 5. POST /settings/editAvatarUrl
 
 Update user's avatar URL.
 
@@ -317,6 +276,10 @@ POST /api/settings/editAvatarUrl
 
 **Goal:** Change the user's profile picture.
 
+**When to use:** When uploading the avatar image and clicking confirm
+
+> **Note:** Notice here that the image saving must be in the frontend using the supabase.storage, in which, when storing the image there, you'll get a publicUrl to it, this will be stored in the backend using this endpoint.
+
 **Request Format:**
 ```json
 {
@@ -324,7 +287,6 @@ POST /api/settings/editAvatarUrl
 }
 ```
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
 
 **Bearer:** Required (Bearer access token).
 
@@ -332,7 +294,7 @@ POST /api/settings/editAvatarUrl
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 200 | `Avatar updated successfully` + `data` | Success |
+| 200 | `Avatar updated successfully` | Success |
 | 400 | `avatarUrl is required` | Missing avatarUrl field |
 | 401 | `Authorization token is required` | Missing token |
 | 401 | `Invalid or expired token` | Token verification failed |
@@ -341,7 +303,7 @@ POST /api/settings/editAvatarUrl
 
 ---
 
-### 10. POST /settings/editHaCredentials
+### 5. POST /settings/editHaCredentials
 
 Register or update Home Assistant credentials. Validates HA connection, creates/updates farm, and stores tokens.
 
@@ -352,6 +314,10 @@ POST /api/settings/editHaCredentials
 
 **Goal:** Connect user to their Home Assistant instance and link to a farm.
 
+**When to use:** When editing the HA credentials
+
+> **Note:** Only valid HA crendentials will be stored, in this case the reponse comes with "status=online" so you update it in the settings page, otherwise, the reponse comes with "status=offline"
+
 **Request Format:**
 ```json
 {
@@ -360,15 +326,13 @@ POST /api/settings/editHaCredentials
 }
 ```
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or in the request body as `token`.
-
 **Bearer:** Required (Bearer access token).
 
 **Possible Responses:**
 
 | Status Code | Message | Possible Cause |
 |-------------|---------|-----------------|
-| 200 | `Home Assistant credentials updated successfully` + `data` (farm_id, ha_instance_id) | Success |
+| 200 | `Home Assistant credentials updated successfully` | Success |
 | 400 | `haUrl and haToken are required` | Missing fields |
 | 400 | `input_text.ha_instance_id helper not found. Please create it manually in Home Assistant` | HA helper entity missing |
 | 401 | `Authorization token is required` | Missing token |
@@ -379,17 +343,32 @@ POST /api/settings/editHaCredentials
 
 > **Important:** Before using this endpoint, the user must create an `input_text.ha_instance_id` helper in their Home Assistant instance (Settings → Helpers → Add Helper → Text).
 
+## Example of success response : 
+```code
+{
+    status: "online",
+    message: "Home Assistant credentials updated successfully"
+}
+
+another one :
+
+{
+    status: "offline",
+    message: "haUrl and haToken are required"
+}
+
+```
 ---
 
 ## Notifications Endpoints
 
-### 11. GET /notifications
+### 1. GET /notifications
 
 Fetch user and farm notifications with a specified limit.
 
 **Endpoint:**
 ```
-GET /api/notifications?limit=10&token=<access_token>
+GET /api/notifications?limit=x
 ```
 
 **Goal:** Retrieve notifications for the logged-in user and their associated farm.
@@ -398,12 +377,12 @@ GET /api/notifications?limit=10&token=<access_token>
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `limit` | number | No | Maximum number of notifications to return (default: 10, max: 2 for user notifications) |
-| `token` | string | No* | Access token (if not using Bearer header) |
+| `limit` | number | yes | Maximum number of notifications to return  |
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or as a query parameter.
 
 **Bearer:** Required (Bearer access token).
+
+**When to use:** On each access to the notifications page
 
 **Possible Responses:**
 
@@ -419,15 +398,41 @@ GET /api/notifications?limit=10&token=<access_token>
 | 500 | `Failed to load farm notifications` | Database error (farm notifications) |
 | 500 | `Failed to load notifications` | General server error |
 
+## Example of success response : 
+```code
+[
+{
+    id: 02188444-9e26-49de-b46f-9bf61daa285d,
+    title: "Heat stress detected",
+    description: "Apple Tomato field — temperature exceeded 38°C for over 2 hours.",
+    timestamp: "2026-04-22 21:52:31.321+00",
+    isRead: false
+  },
+  {
+    id: 0c32c2b7-8c4e-4fa2-8385-f3ce2b443589,
+    title: "New login to the account",
+    description: "Someone login to your account at 22:52",
+    timestamp: "2026-04-22 21:52:31.321+00",
+    isRead: true
+  },
+  {
+    id: 65685f17-2291-483b-8359-ce88988043f93,
+    title: "Welcome to Sahla Farm !",
+    description: "Welcome to Sahla Farm, your number One farm assistant app",
+    timestamp: "2026-04-22 21:52:31.321+00",
+    isRead: true
+  }
+]  
+```
 ---
 
-### 12. PUT /notifications/:id?status=
+### 2. PUT /notifications/?status=
 
 Update the status of a single notification.
 
 **Endpoint:**
 ```
-PUT /api/notifications/<notification_id>?status=read&token=<access_token>
+PUT /api/notifications/:id?status=x
 ```
 
 **Goal:** Mark a specific notification as read or unread.
@@ -437,11 +442,11 @@ PUT /api/notifications/<notification_id>?status=read&token=<access_token>
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `status` | string | Yes | Either `read` or `unread` |
-| `token` | string | No* | Access token (if not using Bearer header) |
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or as a query parameter.
 
 **Bearer:** Required (Bearer access token).
+
+**When to use:** Change the status of the notification (ex: when clicking, set it to status=read)
 
 **Possible Responses:**
 
@@ -457,25 +462,25 @@ PUT /api/notifications/<notification_id>?status=read&token=<access_token>
 
 ---
 
-### 13. PUT /notifications/all?status=
+### 3. PUT /notifications/all?status=
 
 Update the status of all notifications for the user.
 
 **Endpoint:**
 ```
-PUT /api/notifications/all?status=read&token=<access_token>
+PUT /api/notifications/all?status=x
 ```
 
 **Goal:** Mark all user notifications as read or unread in one action.
+
+**When to use:** Change the status of all the notifications (set them all to read or unread)
 
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `status` | string | Yes | Either `read` or `unread` |
-| `token` | string | No* | Access token (if not using Bearer header) |
 
-> **Note:** The `token` can be sent in the Authorization header (Bearer) or as a query parameter.
 
 **Bearer:** Required (Bearer access token).
 
@@ -497,9 +502,8 @@ PUT /api/notifications/all?status=read&token=<access_token>
 ### Authentication
 
 - Most endpoints require a Bearer token in the Authorization header: `Authorization: Bearer <access_token>`
-- Alternatively, the token can be passed:
-  - As a query parameter: `?token=<access_token>`
-  - In the request body: `{ "token": "..." }`
+- Alternatively, the token can be passed as a query parameter: `?token=<access_token>`
+
 
 ### Error Handling
 
@@ -509,5 +513,5 @@ PUT /api/notifications/all?status=read&token=<access_token>
 
 ### Home Assistant Requirements
 
-- To use notification endpoints, users must first connect Home Assistant via `/settings/editHaCredentials`
+- To use notification ( and even history and dashboard ) endpoints, users must first connect Home Assistant via `/settings/editHaCredentials`
 - The HA instance must have an `input_text.ha_instance_id` helper created manually
