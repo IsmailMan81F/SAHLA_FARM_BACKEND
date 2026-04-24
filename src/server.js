@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import { createServer } from "http";
-import { createStatesRouter } from "./routes/states.js";
+import { createStatesRouter } from "./routes/farm.js";
 import { createAuthRouter } from "./routes/auth.js";
 import { createSettingsRouter } from "./routes/settings.js";
 import { createNotificationsRouter } from "./routes/notifications.js";
@@ -16,6 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 //app.use("/api/states", createStatesRouter({ actualState }));
+//app.use("/api/farm/states", createStatesRouter({ actualState }));
 app.use("/api/auth", createAuthRouter());
 app.use("/api/settings", createSettingsRouter());
 app.use("/api/notifications", createNotificationsRouter());
