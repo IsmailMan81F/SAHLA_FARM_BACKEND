@@ -55,6 +55,7 @@ export function createAuthRouter() {
         return res.status(400).json({ error: error?.message || "Signup failed" });
       }
 
+      console.log(data)
       return res.status(201).json({
         message: "User created successfully",
         user_id: data.user.id,

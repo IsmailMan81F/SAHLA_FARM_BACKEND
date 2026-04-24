@@ -134,7 +134,7 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     // 1. Fetch crop data
     const { data: cropData, error: cropError } = await supabase
       .from("crop")
-      .select("id, farm_id, history_id, type, growth_stage, mode")
+      .select("id, farm_id, history_id, type, growth_stage, mode, timestamp")
       .eq("farm_id", farmId)
       .eq("history_id", historyId)
       .maybeSingle();
@@ -237,7 +237,7 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     const response = {
       run: {
         id: historyId,
-        timestamp: cropData?.created_at || sensorData?.[0]?.timestamp || null,
+        timestamp: cropData?.timestamp || sensorData?.[0]?.timestamp || null,
         crop: cropData ? {
           type: cropData.type,
           mode: cropData.mode,
@@ -256,6 +256,83 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     return { success: true, data: response, error: null };
   } catch (err) {
     console.error("Error fetching history:", err);
+    return { success: false, data: null, error: err };
+  }
+}
+
+
+/**
+ * Fetch paginated history list with crop and weather data
+ * @param {string} farmId - Farm ID
+ * @param {number} offset - Number of records to skip
+ * @param {number} limit - Max number of records to return
+ * @returns {Promise<{success: boolean, data: Array|null, error: any}>}
+ */
+export async function fetchHistoryPaginated(farmId, offset, limit) {
+  try {
+    // Fetch crop data with pagination
+    const { data: cropData, error: cropError } = await supabase
+      .from("crop")
+      .select("id, history_id, type, growth_stage, timestamp")
+      .eq("farm_id", farmId)
+      .order("timestamp", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (cropError) {
+      return { success: false, data: null, error: cropError };
+    }
+
+    if (!cropData || cropData.length === 0) {
+      return { success: true, data: [], error: null };
+    }
+
+    // Get unique history IDs from crop data
+    const historyIds = [...new Set(cropData.map(row => row.history_id))];
+
+    // Fetch weather data for all history IDs
+    const { data: weatherData, error: weatherError } = await supabase
+      .from("weather")
+      .select("history_id, state, timestamp")
+      .eq("farm_id", farmId)
+      .in("history_id", historyIds);
+
+    if (weatherError) {
+      console.error("Error fetching weather data:", weatherError);
+    }
+
+    // Create a map for quick weather lookup
+    const weatherMap = {};
+    for (const w of weatherData || []) {
+      weatherMap[w.history_id] = w;
+    }
+
+    // Build the response array
+    const historyList = cropData.map(crop => {
+      const weather = weatherMap[crop.history_id];
+      return {
+        id: crop.history_id,
+        timestamp: crop.timestamp,
+        crop: {
+          type: crop.type,
+          growth_stage: crop.growth_stage
+        },
+        weather: weather ? {
+          state: weather.state
+        } : null
+      };
+    });
+
+    // Remove duplicates (keep first occurrence for each history_id)
+    const uniqueHistoryMap = new Map();
+    for (const item of historyList) {
+      if (!uniqueHistoryMap.has(item.id)) {
+        uniqueHistoryMap.set(item.id, item);
+      }
+    }
+
+    return { success: true, data: Array.from(uniqueHistoryMap.values()), error: null };
+  } catch (err) {
+    console.error("Error fetching paginated history:", err);
     return { success: false, data: null, error: err };
   }
 }

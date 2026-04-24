@@ -10,20 +10,20 @@ import {
   createSocketServer,
   registerSocketHandlers,
 } from "./sockets/socketServer.js";
-import { actualState, stateEmitter } from "../backend_homeassistant.js";
+//import { actualState, stateEmitter } from "../backend_homeassistant.js";
 
 const app = express();
 app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000", credentials: true }));
-app.use("/api/states", createStatesRouter({ actualState }));
+//app.use("/api/states", createStatesRouter({ actualState }));
 app.use("/api/auth", createAuthRouter());
 app.use("/api/settings", createSettingsRouter());
 app.use("/api/notifications", createNotificationsRouter());
 app.use("/api/history", createHistoryRouter());
 
 const httpServer = createServer(app);
-const io = createSocketServer(httpServer);
-registerSocketHandlers(io, actualState, stateEmitter);
+//const io = createSocketServer(httpServer);
+//registerSocketHandlers(io, actualState, stateEmitter);
 
 const PORT = 5000;
 httpServer.listen(PORT, () =>

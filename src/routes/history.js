@@ -5,6 +5,7 @@ import {
   getActiveFarmToken,
   getFarmById,
   fetchHistoryById,
+  fetchHistoryPaginated,
 } from "../services/historyService.js";
 import { verifyHomeassistantCredentials } from "../services/homeassistantService.js";
 
@@ -139,6 +140,55 @@ export function createHistoryRouter() {
       errorStatus: null,
     };
   }
+
+  /**
+   * GET /history?offset=x&limit=y
+   * Get paginated history list with crop and weather data
+   */
+  router.get("/", async (req, res) => {
+    try {
+      // Validate offset and limit
+      const offset = Number(req.query.offset) || 0;
+      const limit = Number(req.query.limit) || 10;
+
+      if (offset < 0) {
+        return res.status(400).json({ error: "offset must be a non-negative number" });
+      }
+
+      if (limit <= 0) {
+        return res.status(400).json({ error: "limit must be a positive number" });
+      }
+
+      if (limit > 100) {
+        return res.status(400).json({ error: "limit cannot exceed 100" });
+      }
+
+      // Validate token and get HA credentials
+      const validation = await validateAndGetHaCredentials(req);
+      
+      if (!validation.valid) {
+        return res.status(validation.errorStatus).json({ error: validation.error });
+      }
+
+      const { farm_id } = validation;
+
+      // Fetch paginated history
+      const { success, data, error } = await fetchHistoryPaginated(farm_id, offset, limit);
+
+      if (!success) {
+        console.error("Failed to fetch paginated history:", error);
+        return res.status(500).json({ error: "Failed to load history" });
+      }
+
+      return res.status(200).json({ 
+        history: data || []
+      });
+
+    } catch (err) {
+      console.error("Paginated history error:", err);
+      return res.status(500).json({ error: "Failed to load history" });
+    }
+  });
 
   /**
    * GET /history/:id
