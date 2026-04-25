@@ -14,7 +14,7 @@ import {
   setCredentialsProvider,
 } from "./sockets/front_back_manager.js";
 
-import { getCredentials, authenticateClient } from "./homeassistantService.js";
+import { getCredentials, authenticateClient } from "./services/homeassistantService.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPRESS APP
