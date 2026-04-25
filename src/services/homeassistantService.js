@@ -329,8 +329,8 @@ export async function getCredentials(ha_instance_id) {
     }
 
     return {
-      ha_url: ha_url,
-      ha_token: farmTokenRow.ha_token,
+      url: ha_url,
+      token: farmTokenRow.ha_token,
       message: "Credentials retrieved successfully"
     };
   } catch (error) {

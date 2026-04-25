@@ -102,9 +102,9 @@ export function registerSocketHandlers(io, authenticateClient) {
         return;
       }
 
-      const { authenticated, ha_instance_id } = authResult;
+      const { authorized, ha_instance_id } = authResult;
 
-      if (!authenticated || !ha_instance_id) {
+      if (!authorized || !ha_instance_id) {
         console.warn(`[FE] Client ${socket.id} failed authentication.`);
         socket.emit("auth_error", { message: "Invalid token." });
         socket.disconnect(true);

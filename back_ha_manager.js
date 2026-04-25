@@ -520,9 +520,11 @@ export async function acquireHAConnection(ha_instance_id) {
     return entry;
   }
 
+
   // ── No connection exists — create one ──
   console.log(`[HA:${ha_instance_id}] Creating new HA connection...`);
   const { url, token } = await _getCredentials(ha_instance_id);
+  console.log({ url, token })
 
   const connectionPromise = createHAConnection(ha_instance_id, url, token)
     .then(entry => {
