@@ -1,5 +1,6 @@
 import express          from "express";
 import { verifyUser }   from "../services/authService.js";
+import { getCredentials } from "../services/homeassistantService.js"
 import { getHAState }   from "../../back_ha_manager.js";
 
 export function createStatesRouter() {
