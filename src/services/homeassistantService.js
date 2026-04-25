@@ -195,6 +195,7 @@ export async function authenticateClient(token) {
       return {
         authorized: false,
         ha_instance_id: null,
+        farm_id: null,
         message: "Invalid or expired token"
       };
     }
@@ -210,6 +211,7 @@ export async function authenticateClient(token) {
       return {
         authorized: false,
         ha_instance_id: null,
+        farm_id: null,
         message: "Failed to query user HA credentials"
       };
     }
@@ -218,6 +220,7 @@ export async function authenticateClient(token) {
       return {
         authorized: false,
         ha_instance_id: null,
+        farm_id: null,
         message: "No HA tokens found for user"
       };
     }
@@ -259,6 +262,7 @@ export async function authenticateClient(token) {
       return {
         authorized: true,
         ha_instance_id: farmRow.ha_instance_id,
+        farm_id: farmTokenRow.farm_id,
         message: "Authentication successful"
       };
     }
@@ -267,6 +271,7 @@ export async function authenticateClient(token) {
     return {
       authorized: false,
       ha_instance_id: null,
+      farm_id: null,
       message: "No active HA token found"
     };
   } catch (error) {
@@ -274,6 +279,7 @@ export async function authenticateClient(token) {
     return {
       authorized: false,
       ha_instance_id: null,
+      farm_id: null,
       message: "Internal server error during authentication"
     };
   }

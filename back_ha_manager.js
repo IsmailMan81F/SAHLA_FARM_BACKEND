@@ -503,7 +503,7 @@ function createHAConnection(ha_instance_id, url, token) {
  * - If not yet connected: creates a new connection, caches the promise,
  *   and resolves once the initial state is ready.
  */
-export async function acquireHAConnection(ha_instance_id) {
+export async function acquireHAConnection(ha_instance_id, farm_id) {
   // ── Already connected ──
   if (haConnections.has(ha_instance_id)) {
     const entry = haConnections.get(ha_instance_id);
@@ -528,6 +528,7 @@ export async function acquireHAConnection(ha_instance_id) {
 
   const connectionPromise = createHAConnection(ha_instance_id, url, token)
     .then(entry => {
+      entry.farm_id = farm_id;
       haConnections.set(ha_instance_id, entry);
       pendingConnections.delete(ha_instance_id);
       entry.refCount++;

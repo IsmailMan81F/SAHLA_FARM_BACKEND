@@ -109,7 +109,7 @@ export function registerSocketHandlers(io, authenticateClient) {
         return;
       }
 
-      const { authorized, ha_instance_id } = authResult;
+      const { authorized, ha_instance_id, farm_id } = authResult;
 
       if (!authorized || !ha_instance_id) {
         console.warn(`[FE] Client ${socket.id} failed authentication.`);
@@ -125,7 +125,7 @@ export function registerSocketHandlers(io, authenticateClient) {
       // ── Step 4: Acquire the HA connection for this ha_instance_id ───────────
       let haEntry;
       try {
-        haEntry = await acquireHAConnection(ha_instance_id);
+        haEntry = await acquireHAConnection(ha_instance_id, farm_id);
       } catch (err) {
         console.error(
           `[FE] Failed to acquire HA connection for ${ha_instance_id}:`,
