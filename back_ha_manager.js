@@ -13,6 +13,7 @@
 import WebSocket from "ws";
 import EventEmitter from "events";
 import { v4 as uuidv4 } from "uuid";
+import { saveToDatabase } from "./src/services/historyService.js"
 
 // ─── Injected from outside — resolves { url, token } for a given ha_instance_id
 let _getCredentials = null;
@@ -138,8 +139,8 @@ function cloneState(state) {
 function buildCrop(states) {
   return {
     type: getState(states, ENTITY.CROP_TYPE),
-    mode: getState(states, ENTITY.GROWTH_STAGE),
-    growth_stage: getState(states, ENTITY.PRIORITY_MODE),
+    mode: getState(states, ENTITY.PRIORITY_MODE),
+    growth_stage: getState(states, ENTITY.GROWTH_STAGE),
   };
 }
 
@@ -552,7 +553,7 @@ function createHAConnection(ha_instance_id, url, token) {
             async () => {
               try {
                 console.log("Start saving...")
-                await saveToDatabase(cloneState(entry.actualState), farm_id);
+                await saveToDatabase(cloneState(entry.actualState), entry.farm_id);
                 console.log("Finished saving... check the database")
                 console.log(`[HA:${ha_instance_id}] Snapshot saved.`);
               } catch (err) {
@@ -562,7 +563,7 @@ function createHAConnection(ha_instance_id, url, token) {
                 );
               }
             },
-            1 * 60 * 1000,
+            1 * 10 * 1000,
           );
 
           resolve(entry);
@@ -652,7 +653,6 @@ export async function acquireHAConnection(ha_instance_id, farm_id) {
   // ── No connection exists — create one ──
   console.log(`[HA:${ha_instance_id}] Creating new HA connection...`);
   const { url, token } = await _getCredentials(ha_instance_id);
-  console.log({ url, token });
 
   const connectionPromise = createHAConnection(ha_instance_id, url, token)
     .then((entry) => {

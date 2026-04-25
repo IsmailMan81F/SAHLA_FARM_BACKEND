@@ -321,7 +321,10 @@ export async function saveToDatabase(snapshot, farmId) {
     // 2. Save crop data
     if (snapshot.crop) {
       const { type, mode, growth_stage } = snapshot.crop;
-      
+
+      const lower_growth_stage = growth_stage.toLowerCase()
+      const lower_mode = mode.toLowerCase()
+
       const { error: cropError } = await supabase
         .from("crop")
         .insert([
@@ -331,8 +334,8 @@ export async function saveToDatabase(snapshot, farmId) {
             history_id: historyId,
             timestamp,
             type,
-            growth_stage,
-            mode
+            growth_stage : lower_growth_stage,
+            mode: lower_mode
           }
         ]);
 
