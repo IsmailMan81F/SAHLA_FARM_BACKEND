@@ -557,3 +557,7 @@ export function releaseHAConnection(ha_instance_id) {
     haConnections.delete(ha_instance_id);
   }
 } 
+
+export function getHAState(ha_instance_id) {
+  return haConnections.get(ha_instance_id)?.actualState ?? null;
+}
