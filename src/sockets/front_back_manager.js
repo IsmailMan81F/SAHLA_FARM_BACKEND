@@ -17,6 +17,7 @@ import {
   acquireHAConnection,
   releaseHAConnection,
   setCredentialsProvider,
+  setHAEntity, 
 } from "../../back_ha_manager.js";
 
 // ─── How long a client has to authenticate before being disconnected (ms) ────
@@ -270,3 +271,67 @@ const STATE_UPDATE_EVENT_MAP = {
   weather: "weather_changed",
   location: "location_changed",
 };
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTITY CALL RESOLVER
+// Maps a frontend set_entity request to the correct HA REST API call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Maps crop field names to their HA input_select entity IDs
+const CROP_ENTITY_MAP = {
+  type        : "input_select.crop_type",
+  mode        : "input_select.growth_stage",
+  growth_stage: "input_select.priority_mode",
+};
+
+/**
+ * Resolves a frontend set_entity request into a HA REST API call.
+ *
+ * @param {string} type    - "actuator_status" | "actuator_control_mode" | "crop"
+ * @param {object} payload - the change data from the frontend
+ * @returns {{ domain, service, data }}
+ * @throws {Error} if the type or payload is invalid
+ */
+function resolveHACall(type, payload) {
+  if (!type || !payload) throw new Error("Missing type or payload.");
+
+  // ── Actuator on/off ──
+  if (type === "actuator_status") {
+    const { actuatorType, value } = payload;
+    if (!actuatorType || !["on", "off"].includes(value))
+      throw new Error(`Invalid actuator_status payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_boolean",
+      service: value === "on" ? "turn_on" : "turn_off",
+      data   : { entity_id: `input_boolean.${actuatorType}_status` },
+    };
+  }
+
+  // ── Actuator control mode (auto / semi_auto) ──
+  if (type === "actuator_control_mode") {
+    const { actuatorType, value } = payload;
+    if (!actuatorType || !["auto", "semi_auto"].includes(value))
+      throw new Error(`Invalid actuator_control_mode payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_boolean",
+      service: value === "semi_auto" ? "turn_on" : "turn_off",
+      data   : { entity_id: `input_boolean.${actuatorType}_control_mode` },
+    };
+  }
+
+  // ── Crop field (type / mode / growth_stage) ──
+  if (type === "crop") {
+    const { field, value } = payload;
+    const entity_id = CROP_ENTITY_MAP[field];
+    if (!entity_id || !value)
+      throw new Error(`Invalid crop payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_select",
+      service: "select_option",
+      data   : { entity_id, option: value },
+    };
+  }
+
+  throw new Error(`Unknown set_entity type: "${type}"`);
+}
