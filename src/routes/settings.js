@@ -245,6 +245,7 @@ export function createSettingsRouter() {
         });
       }
 
+
       const { data, error } = await supabase
         .from("preferences_language")
         .update({ language: language.toLowerCase() })

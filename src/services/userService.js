@@ -27,7 +27,6 @@ export async function updateUserLastLogin(user_id) {
 
   const { data, error } = await supabase.from("users").update({ last_login_at: now }).eq("id", user_id).select();
 
-  console.log(data)
   if (error) {
     return { success: false, error };
   }
