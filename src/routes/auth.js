@@ -209,7 +209,7 @@ export function createAuthRouter() {
         // Continue with success response even if notification fails
       }
 
-      return res.status(201).json({ message: "User setup completed successfully", user });
+      return res.status(201).json({ message: "User setup completed successfully" });
     } catch (err) {
       console.error("signupSetup failed:", err);
       return res.status(500).json({ error: "Failed to complete signup setup" });
