@@ -1,6 +1,6 @@
 import express          from "express";
 import { verifyUser }   from "../services/authService.js";
-import { getCredentials } from "../services/homeassistantService.js"
+import { authenticateClient } from "../services/homeassistantService.js"
 import { getHAState }   from "../../back_ha_manager.js";
 
 export function createStatesRouter() {
@@ -20,11 +20,14 @@ export function createStatesRouter() {
 
     // ── 2. Verify the token and get the user + their HA instance ──────────────
     try {
-      const { unauthorized, user_id } = await verifyUser(token);
+      const { unauthorized } = await verifyUser(token);
 
       if (unauthorized) {
         return res.status(401).json({ error: "Invalid or expired token" });
       }
+
+      // ── 4. Bring the ha_instance_id from the user token ──────────────────────
+      const { ha_instance_id } = await authenticateClient(token);
 
       // ── 3. Look up the live state for that HA instance ──────────────────────
       const state = getHAState(ha_instance_id);

@@ -14,7 +14,7 @@ import {
   setCredentialsProvider,
 } from "./sockets/front_back_manager.js";
 
-import { getCredentials, authenticateClient } from "./your_db_module.js";
+import { getCredentials, authenticateClient } from "./homeassistantService.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPRESS APP
@@ -26,12 +26,11 @@ app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 
 // ─── REST API routes ──────────────────────────────────────────────────────────
-app.use("/api/states",       createStatesRouter());
-app.use("/api/farm/states",  createStatesRouter());
-app.use("/api/auth",         createAuthRouter());
-app.use("/api/settings",     createSettingsRouter());
+app.use("/api/farm",          createStatesRouter());
+app.use("/api/auth",          createAuthRouter());
+app.use("/api/settings",      createSettingsRouter());
 app.use("/api/notifications", createNotificationsRouter());
-app.use("/api/history",      createHistoryRouter());
+app.use("/api/history",       createHistoryRouter());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTTP + SOCKET.IO SERVER
