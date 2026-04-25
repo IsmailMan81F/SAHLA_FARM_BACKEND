@@ -113,7 +113,7 @@ export async function getUserPreferenceUnits(userId) {
  */
 function mapSensorTypeToUnitName(sensorType) {
   const mapping = {
-    "soil_moisture": "soil moisture",
+    "soil moisture": "soil moisture",
     "temperature": "temperature",
     "air_humidity": "humidity",
     "humidity": "humidity",
@@ -158,7 +158,7 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     // 3. Fetch actuator data
     const { data: actuatorData, error: actuatorError } = await supabase
       .from("actuator")
-      .select("id, farm_id, history_id, type, status, control_mode, run_at, duration, run_until")
+      .select("id, farm_id, history_id, type, status, control_mode, run_at, duration_minutes, run_until")
       .eq("farm_id", farmId)
       .eq("history_id", historyId);
 
@@ -201,7 +201,6 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     const formattedSensors = (sensorData || []).map(sensor => {
       const unitName = mapSensorTypeToUnitName(sensor.type);
       const unit = unitName ? unitsMap[unitName] : null;
-      
       return {
         id: sensor.id,
         type: sensor.type,
