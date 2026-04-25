@@ -541,7 +541,7 @@ export async function acquireHAConnection(ha_instance_id) {
 }
 
 /**
- * Decremnts the refCount for a HA connection.
+ * Decrements the refCount for a HA connection.
  * If no more clients are using it, closes the WebSocket and removes it from the map.
  */
 export function releaseHAConnection(ha_instance_id) {
