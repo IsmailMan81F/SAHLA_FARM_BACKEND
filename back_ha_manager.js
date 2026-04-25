@@ -563,3 +563,39 @@ export function releaseHAConnection(ha_instance_id) {
 export function getHAState(ha_instance_id) {
   return haConnections.get(ha_instance_id)?.actualState ?? null;
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// setHAEntity
+//
+// Calls the Home Assistant REST API to change the state of an entity.
+// Used by front_back_manager when a frontend client emits "set_entity".
+//
+// @param {string} ha_instance_id
+// @param {string} domain   - e.g. "input_boolean", "input_select"
+// @param {string} service  - e.g. "turn_on", "turn_off", "select_option"
+// @param {object} data     - e.g. { entity_id: "input_boolean.pump_status" }
+//                            or   { entity_id: "input_select.crop_type", option: "Tomato" }
+// ─────────────────────────────────────────────────────────────────────────────
+export async function setHAEntity(ha_instance_id, domain, service, data) {
+  const entry = haConnections.get(ha_instance_id);
+  if (!entry) throw new Error(`No active HA connection for instance: ${ha_instance_id}`);
+
+  const url = `${entry.url}/api/services/${domain}/${service}`;
+
+  const res = await fetch(url, {
+    method : "POST",
+    headers: {
+      "Authorization": `Bearer ${entry.token}`,
+      "Content-Type" : "application/json",
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`HA API error ${res.status}: ${text}`);
+  }
+
+  console.log(`[HA:${ha_instance_id}] set_entity → ${domain}/${service}`, data);
+}
