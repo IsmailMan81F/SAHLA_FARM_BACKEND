@@ -9,8 +9,8 @@ import { createHistoryRouter } from "./routes/history.js";
 import {
   createSocketServer,
   registerSocketHandlers,
-} from "./sockets/socketServer.js";
-import { actualState, stateEmitter } from "../backend_homeassistant.js";
+} from "./sockets/front_back_manager.js";
+import { actualState, stateEmitter } from "../back_ha_manager.js";
 
 const app = express();
 app.use(express.json());
