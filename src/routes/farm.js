@@ -19,7 +19,7 @@ export function createStatesRouter() {
 
     // ── 2. Verify the token and get the user + their HA instance ──────────────
     try {
-      const { unauthorized, ha_instance_id } = await verifyUser(token);
+      const { unauthorized, user_id } = await verifyUser(token);
 
       if (unauthorized) {
         return res.status(401).json({ error: "Invalid or expired token" });

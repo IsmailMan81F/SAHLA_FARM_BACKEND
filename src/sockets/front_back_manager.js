@@ -139,8 +139,6 @@ export function registerSocketHandlers(io, authenticateClient) {
       socket.join(ha_instance_id);
       socket.emit("auth_success", { ha_instance_id });
 
-      // ── Step 7: Send the current full state immediately ──────────────────────
-      socket.emit("homeassistant_state", JSON.parse(JSON.stringify(haEntry.actualState)));
 
       // ── Step 8: Register the state emitter listener (once per HA instance) ──
       // We only register one listener per HA instance — it emits to the whole room.
