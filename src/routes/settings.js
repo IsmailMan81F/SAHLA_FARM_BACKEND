@@ -399,8 +399,7 @@ export function createSettingsRouter() {
       }
 
       return res.status(200).json({
-        message: "Profile updated successfully",
-        user: updatedUser?.[0] || null,
+        message: "Profile updated successfully"
       });
     } catch (err) {
       console.error("Failed to edit profile:", err);
@@ -721,8 +720,7 @@ export function createSettingsRouter() {
       // ===============================
       return res.status(200).json({
         status: "online",
-        message: "Home Assistant credentials updated successfully",
-        data: { farm_id, ha_instance_id },
+        message: "Home Assistant credentials updated successfully"
       });
     } catch (err) {
       console.error("Failed to edit HA credentials:", err);
