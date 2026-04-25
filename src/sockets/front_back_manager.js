@@ -281,8 +281,8 @@ const STATE_UPDATE_EVENT_MAP = {
 // Maps crop field names to their HA input_select entity IDs
 const CROP_ENTITY_MAP = {
   type        : "input_select.crop_type",
-  mode        : "input_select.growth_stage",
-  growth_stage: "input_select.priority_mode",
+  mode        : "input_select.priority_mode",
+  growth_stage: "input_select.growth_stage",
 };
 
 /**
