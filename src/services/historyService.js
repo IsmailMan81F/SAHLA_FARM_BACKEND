@@ -215,8 +215,8 @@ export async function fetchHistoryById(farmId, historyId, userId) {
       let durationMinutes = null;
       let runUntil = null;
 
-      if (actuator.duration && actuator.run_at) {
-        durationMinutes = actuator.duration;
+      if (actuator.duration_minutes && actuator.run_at) {
+        durationMinutes = actuator.duration_minutes;
         if (actuator.run_until) {
           runUntil = actuator.run_until;
         }
