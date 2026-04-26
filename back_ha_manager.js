@@ -552,9 +552,7 @@ function createHAConnection(ha_instance_id, url, token) {
           entry.snapshotInterval = setInterval(
             async () => {
               try {
-                console.log("Start saving...")
                 await saveToDatabase(cloneState(entry.actualState), entry.farm_id);
-                console.log("Finished saving... check the database")
                 console.log(`[HA:${ha_instance_id}] Snapshot saved.`);
               } catch (err) {
                 console.error(
@@ -563,7 +561,7 @@ function createHAConnection(ha_instance_id, url, token) {
                 );
               }
             },
-            1 * 10 * 1000,
+            15 * 1000,
           );
 
           resolve(entry);

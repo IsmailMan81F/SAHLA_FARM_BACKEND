@@ -438,12 +438,13 @@ export async function saveToDatabase(snapshot, farmId) {
     if (snapshot.notifications && Array.isArray(snapshot.notifications)) {
       for (const notification of snapshot.notifications) {
 
+        const freshNotificationId = uuidv4();
         // Insert into notifications table
         const { error: notificationError } = await supabase
           .from("notification")
           .insert([
             {
-              id: notification.id,
+              id: freshNotificationId,
               title: notification.title,
               description: notification.description,
               timestamp
@@ -461,7 +462,7 @@ export async function saveToDatabase(snapshot, farmId) {
           .insert([
             {
               farm_id: farmId,
-              notification_id: notification.id,
+              notification_id: freshNotificationId,
               status: "unread"
             }
           ]);

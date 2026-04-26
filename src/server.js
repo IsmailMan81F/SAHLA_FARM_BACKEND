@@ -6,7 +6,7 @@ import { createStatesRouter }        from "./routes/farm.js";
 import { createAuthRouter }          from "./routes/auth.js";
 import { createSettingsRouter }      from "./routes/settings.js";
 import { createNotificationsRouter } from "./routes/notifications.js";
-import { createHistoryRouter }       from "./routes/history.js";
+import { createHistoryRouter }       from "./routes/histories.js";
 
 import {
   createSocketServer,
@@ -30,7 +30,7 @@ app.use("/api/farm",          createStatesRouter());
 app.use("/api/auth",          createAuthRouter());
 app.use("/api/settings",      createSettingsRouter());
 app.use("/api/notifications", createNotificationsRouter());
-app.use("/api/history",       createHistoryRouter());
+app.use("/api/histories",       createHistoryRouter());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTTP + SOCKET.IO SERVER
