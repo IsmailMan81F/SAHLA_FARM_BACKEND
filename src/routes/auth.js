@@ -184,6 +184,12 @@ export function createAuthRouter() {
         return res.status(500).json({ error: "Failed to check user language preference" });
       }
 
+      const languageMap = {
+        en: "english",
+        ar: "arabic",
+        fr: "french",
+      };
+
       if (!existingLanguage) {
         const { error: languageError } = await supabase
           .from("preferences_language")
@@ -191,7 +197,7 @@ export function createAuthRouter() {
             {
               id: crypto.randomUUID(),
               user_id,
-              language: "english",
+              language: languageMap[req.body.language] || "english",
             },
           ]);
 
