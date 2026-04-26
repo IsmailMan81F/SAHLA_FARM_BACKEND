@@ -22,7 +22,11 @@ POST /api/notifications/:id?status=y
 POST /api/notifications/all?status=y
 ```
 
-## OTHERS : coming soon..
+### HISTORIES :
+```code
+GET /api/histories?offset=x&limit=y
+GET /api/histories/:id
+```
 
 ### HOW TO USE : 
 
