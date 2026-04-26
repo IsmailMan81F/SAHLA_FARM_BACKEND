@@ -10,6 +10,7 @@ Base URL: `https://backend-server.com/api`
 1. [Auth Endpoints](#auth-endpoints)
 2. [Settings Endpoints](#settings-endpoints)
 3. [Notifications Endpoints](#notifications-endpoints)
+4. [History Endpoints](#history-endpoints)
 
 ---
 
@@ -504,6 +505,186 @@ PUT /api/notifications/all?status=x
 - Most endpoints require a Bearer token in the Authorization header: `Authorization: Bearer <access_token>`
 - Alternatively, the token can be passed as a query parameter: `?token=<access_token>`
 
+
+---
+
+## History Endpoints
+
+### 1. GET /histories
+
+Fetch paginated list of history records with crop and weather data.
+
+**Endpoint:**
+```
+GET /api/histories?offset=x&limit=y
+```
+
+**Goal:** Retrieve a paginated list of all farm history records.
+
+**When to use:** On each access to the history page to display past records
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `offset` | number | yes | Starting position for record retrieval (must be non-negative) |
+| `limit` | number | yes | Maximum number of records to return (must be positive and ≤ 100) |
+
+**Bearer:** Required (Bearer access token).
+
+**Possible Responses:**
+
+| Status Code | Message | Possible Cause |
+|-------------|---------|----------------|
+| 200 | `history` array | Success |
+| 400 | `offset must be a non-negative number` | Invalid or negative offset |
+| 400 | `limit must be a positive number` | Invalid or non-positive limit |
+| 400 | `limit cannot exceed 100` | Limit exceeds maximum allowed |
+| 400 | `Home Assistant credentials not set. Please configure HA credentials first.` | User hasn't connected HA |
+| 400 | `All Home Assistant tokens are expired. Please update your HA credentials.` | All HA tokens expired |
+| 401 | `Authorization token is required` | Missing token |
+| 401 | `Invalid or expired token` | Token verification failed |
+| 404 | `Farm not found` | Farm record missing |
+| 500 | `Failed to load history` | Server error during fetch |
+
+## Example of success response :
+```code
+{
+  "history": [
+    {
+      "id": "37d8098b-366d-4599-b9e4-497e99863f54",
+      "timestamp": "2026-04-25T22:43:17.415+00:00",
+      "crop": {
+        "type": "Banana",
+        "growth_stage": "germination"
+      },
+      "weather": {
+        "state": "rainy"
+      }
+    },
+    {
+      "id": "36ec70d8-67f5-442d-80e0-39a5b51bd4e8",
+      "timestamp": "2026-04-25T22:43:02.414+00:00",
+      "crop": {
+        "type": "Banana",
+        "growth_stage": "germination"
+      },
+      "weather": {
+        "state": "rainy"
+      }
+    }
+  ]
+}
+```
+
+---
+
+### 2. GET /histories/:id
+
+Fetch a specific history record by ID with all related data (crop, sensors, actuators, weather, recommendation).
+
+**Endpoint:**
+```
+GET /api/histories/:id
+```
+
+**Goal:** Retrieve complete details of a specific history record including all associated data.
+
+**When to use:** When clicking on a history record to view its full details
+
+**URL Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | yes | The history record ID (UUID format) |
+
+**Bearer:** Required (Bearer access token).
+
+**Possible Responses:**
+
+| Status Code | Message | Possible Cause |
+|-------------|---------|----------------|
+| 200 | History object with all related data | Success |
+| 400 | `History ID is required` | Missing ID in path |
+| 400 | `Home Assistant credentials not set. Please configure HA credentials first.` | User hasn't connected HA |
+| 400 | `All Home Assistant tokens are expired. Please update your HA credentials.` | All HA tokens expired |
+| 401 | `Authorization token is required` | Missing token |
+| 401 | `Invalid or expired token` | Token verification failed |
+| 404 | `Farm not found` | Farm record missing |
+| 404 | `History not found` | History record not found for given ID |
+| 500 | `Failed to load history` | Server error during fetch |
+
+## Example of success response :
+```code
+{
+  "run": {
+    "id": "4d468e89-4066-42dc-b4fa-c746f07c220a",
+    "timestamp": "2026-04-25T22:40:17.367+00:00",
+    "crop": {
+      "type": "Banana",
+      "mode": "balanced",
+      "growth_stage": "germination"
+    },
+    "sensors": [
+      {
+        "id": "8726d9ed-a36d-4902-a615-7b25dfe07bf5",
+        "type": "temperature",
+        "unit": "°C",
+        "value": 57,
+        "description": "Temperature is comfortable, ideal for carrot seedling growth."
+      },
+      {
+        "id": "b3fb7c99-f4ab-45c3-a5d9-4057bf1bf9e4",
+        "type": "humidity",
+        "unit": "%",
+        "value": 41,
+        "description": "Humidity is moderate, supporting healthy carrot seedling development."
+      },
+      {
+        "id": "23276e8b-e896-4854-90ab-b50829bc83e5",
+        "type": "soil moisture",
+        "unit": "%",
+        "value": 54,
+        "description": "Your soil is critically dry; irrigate now to protect seedlings."
+      },
+      {
+        "id": "df4caa46-9fa7-430b-ba77-a10b5e047b92",
+        "type": "luminosity",
+        "unit": "lux",
+        "value": 516,
+        "description": "Light levels are adequate, allowing seedlings to photosynthesize efficiently."
+      }
+    ],
+    "actuators": [
+      {
+        "id": "44f3f537-1f51-4a9e-9129-8434d5073de5",
+        "type": "pump",
+        "status": "off",
+        "control_mode": "auto",
+        "run_at": "2026-04-07T18:31:00+00:00",
+        "duration_minutes": 45,
+        "run_until": "2026-04-07T19:16:00+00:00"
+      },
+      {
+        "id": "76058efe-9f12-4129-89ef-c71ce6ec33b7",
+        "type": "fan",
+        "status": "on",
+        "control_mode": "auto",
+        "run_at": "2026-04-07T14:34:00+00:00",
+        "duration_minutes": 45,
+        "run_until": "2026-04-07T15:19:00+00:00"
+      }
+    ],
+    "weather": {
+      "state": "rainy",
+      "summary": "The next 48 hours in Algiers will be marked by cloudy skies and high precipitation probabilities, starting with heavy rain showers and gradually decreasing to light rain. Temperatures will remain cool, peaking around 15°C"
+    },
+    "recommendation": "No actuators to run. Soil is dry yet rain is forecasted heavily; image shows a dry scene. Keep irrigation off until weather clears, then consider watering."
+  }
+}
+```
+
+---
 
 ### Error Handling
 
