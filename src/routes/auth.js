@@ -55,7 +55,6 @@ export function createAuthRouter() {
         return res.status(400).json({ error: error?.message || "Signup failed" });
       }
 
-      console.log(data)
       return res.status(201).json({
         message: "User created successfully",
         user_id: data.user.id,
@@ -68,7 +67,6 @@ export function createAuthRouter() {
   });
 
   router.post("/signupSetup", async (req, res) => {
-    console.log("Received signupSetup request with body:", req.body);
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith("Bearer ")
       ? authHeader.split(" ")[1]
@@ -185,11 +183,6 @@ export function createAuthRouter() {
         console.error("Failed to check existing preferences_language:", languageCheckError);
         return res.status(500).json({ error: "Failed to check user language preference" });
       }
-      const languageMap = {
-        en: "english",
-        ar: "arabic",
-        fr: "french",
-      };
 
       if (!existingLanguage) {
         const { error: languageError } = await supabase
@@ -198,7 +191,7 @@ export function createAuthRouter() {
             {
               id: crypto.randomUUID(),
               user_id,
-              language: languageMap[req.body.language] || "english",
+              language: "english",
             },
           ]);
 

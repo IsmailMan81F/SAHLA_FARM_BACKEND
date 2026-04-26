@@ -1,13 +1,12 @@
-import "./env.js";
-import express from "express";
-import cors from "cors";
-import { createServer } from "http";
+import express                from "express";
+import cors                   from "cors";
+import { createServer }       from "http";
 
-import { createStatesRouter } from "./routes/farm.js";
-import { createAuthRouter } from "./routes/auth.js";
-import { createSettingsRouter } from "./routes/settings.js";
+import { createStatesRouter }        from "./routes/farm.js";
+import { createAuthRouter }          from "./routes/auth.js";
+import { createSettingsRouter }      from "./routes/settings.js";
 import { createNotificationsRouter } from "./routes/notifications.js";
-import { createHistoryRouter } from "./routes/history.js";
+import { createHistoryRouter }       from "./routes/histories.js";
 
 import {
   createSocketServer,
@@ -15,10 +14,7 @@ import {
   setCredentialsProvider,
 } from "./sockets/front_back_manager.js";
 
-import {
-  getCredentials,
-  authenticateClient,
-} from "./services/homeassistantService.js";
+import { getCredentials, authenticateClient } from "./services/homeassistantService.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // EXPRESS APP
@@ -30,18 +26,18 @@ app.use(express.json());
 app.use(cors({ origin: "http://localhost:3000", credentials: true }));
 
 // ─── REST API routes ──────────────────────────────────────────────────────────
-app.use("/api/farm", createStatesRouter());
-app.use("/api/auth", createAuthRouter());
-app.use("/api/settings", createSettingsRouter());
+app.use("/api/farm",          createStatesRouter());
+app.use("/api/auth",          createAuthRouter());
+app.use("/api/settings",      createSettingsRouter());
 app.use("/api/notifications", createNotificationsRouter());
-app.use("/api/history", createHistoryRouter());
+app.use("/api/histories",       createHistoryRouter());
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HTTP + SOCKET.IO SERVER
 // ─────────────────────────────────────────────────────────────────────────────
 
 const httpServer = createServer(app);
-const io = createSocketServer(httpServer);
+const io         = createSocketServer(httpServer);
 
 // Inject the DB credentials provider into the HA connection manager
 setCredentialsProvider(getCredentials);

@@ -13,7 +13,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { Server } from "socket.io";
-import { acquireHAConnection, releaseHAConnection, setCredentialsProvider } from "../../back_ha_manager.js";
+import {
+  acquireHAConnection,
+  releaseHAConnection,
+  setCredentialsProvider,
+  setHAEntity, 
+} from "../../back_ha_manager.js";
 
 // ─── How long a client has to authenticate before being disconnected (ms) ────
 const AUTH_TIMEOUT_MS = 5000;
@@ -51,8 +56,8 @@ const haInstanceListeners = new Map();
 export function createSocketServer(httpServer) {
   return new Server(httpServer, {
     cors: {
-      origin     : "*",
-      methods    : ["GET", "POST"],
+      origin: "*",
+      methods: ["GET", "POST"],
       credentials: true,
     },
   });
@@ -69,7 +74,6 @@ export function createSocketServer(httpServer) {
  * @param {Function} authenticateClient - async (token) => { authenticated, ha_instance_id }
  */
 export function registerSocketHandlers(io, authenticateClient) {
-
   io.on("connection", (socket) => {
     console.log(`[FE] Client connected: ${socket.id}`);
 
@@ -96,37 +100,49 @@ export function registerSocketHandlers(io, authenticateClient) {
       try {
         authResult = await authenticateClient(token);
       } catch (err) {
-        console.error(`[FE] Auth function threw for client ${socket.id}:`, err.message);
+        console.error(
+          `[FE] Auth function threw for client ${socket.id}:`,
+          err.message,
+        );
         socket.emit("auth_error", { message: "Authentication service error." });
         socket.disconnect(true);
         return;
       }
 
-      const { authenticated, ha_instance_id } = authResult;
+      const { authorized, ha_instance_id, farm_id } = authResult;
 
-      if (!authenticated || !ha_instance_id) {
+      if (!authorized || !ha_instance_id) {
         console.warn(`[FE] Client ${socket.id} failed authentication.`);
         socket.emit("auth_error", { message: "Invalid token." });
         socket.disconnect(true);
         return;
       }
 
-      console.log(`[FE] Client ${socket.id} authenticated → HA instance: ${ha_instance_id}`);
+      console.log(
+        `[FE] Client ${socket.id} authenticated → HA instance: ${ha_instance_id}`,
+      );
 
       // ── Step 4: Acquire the HA connection for this ha_instance_id ───────────
       let haEntry;
       try {
-        haEntry = await acquireHAConnection(ha_instance_id);
+        haEntry = await acquireHAConnection(ha_instance_id, farm_id);
       } catch (err) {
-        console.error(`[FE] Failed to acquire HA connection for ${ha_instance_id}:`, err.message);
-        socket.emit("ha_error", { message: "Could not connect to Home Assistant." });
+        console.error(
+          `[FE] Failed to acquire HA connection for ${ha_instance_id}:`,
+          err.message,
+        );
+        socket.emit("ha_error", {
+          message: "Could not connect to Home Assistant.",
+        });
         socket.disconnect(true);
         return;
       }
 
       // ── Step 5: Guard — client may have disconnected during the async above ──
       if (!socket.connected) {
-        console.warn(`[FE] Client ${socket.id} disconnected during HA connection setup. Releasing.`);
+        console.warn(
+          `[FE] Client ${socket.id} disconnected during HA connection setup. Releasing.`,
+        );
         releaseHAConnection(ha_instance_id);
         return;
       }
@@ -139,39 +155,83 @@ export function registerSocketHandlers(io, authenticateClient) {
       socket.join(ha_instance_id);
       socket.emit("auth_success", { ha_instance_id });
 
-
       // ── Step 8: Register the state emitter listener (once per HA instance) ──
       // We only register one listener per HA instance — it emits to the whole room.
       if (!haInstanceListeners.has(ha_instance_id)) {
         const onStateUpdate = (update) => {
-          const eventName = STATE_UPDATE_EVENT_MAP[update.field] ?? "state_changed";
+          const eventName =
+            STATE_UPDATE_EVENT_MAP[update.field] ?? "state_changed";
           io.to(ha_instance_id).emit(eventName, update);
-          console.log(`[FE] Emitted "${eventName}" to room "${ha_instance_id}"`);
+          console.log(
+            `[FE] Emitted "${eventName}" to room "${ha_instance_id}"`,
+          );
         };
 
         const onHADisconnected = () => {
           io.to(ha_instance_id).emit("ha_disconnected", {
-            message: "Connection to Home Assistant lost. Reconnecting..."
+            message: "Connection to Home Assistant lost. Reconnecting...",
           });
         };
 
         const onHAFailed = () => {
           io.to(ha_instance_id).emit("ha_error", {
-            message: "Connection to Home Assistant permanently failed."
+            message: "Connection to Home Assistant permanently failed.",
           });
         };
 
-        haEntry.emitter.on("state_update",    onStateUpdate);
+        haEntry.emitter.on("state_update", onStateUpdate);
         haEntry.emitter.on("ha_disconnected", onHADisconnected);
-        haEntry.emitter.on("ha_failed",       onHAFailed);
+        haEntry.emitter.on("ha_failed", onHAFailed);
 
         // Store cleanup function so we can remove the listener later
         haInstanceListeners.set(ha_instance_id, () => {
-          haEntry.emitter.off("state_update",    onStateUpdate);
+          haEntry.emitter.off("state_update", onStateUpdate);
           haEntry.emitter.off("ha_disconnected", onHADisconnected);
-          haEntry.emitter.off("ha_failed",       onHAFailed);
+          haEntry.emitter.off("ha_failed", onHAFailed);
         });
       }
+
+      // ── Step 8.5: Handle entity change requests from the frontend ─────────────────
+      //
+      // The frontend emits:
+      // {
+      //   type  : "actuator_status"    | "actuator_control_mode" | "crop",
+      //   payload: {
+      //     // for actuator_status:
+      //     actuatorType : "pump" | "fan",
+      //     value        : "on"   | "off",
+      //
+      //     // for actuator_control_mode:
+      //     actuatorType : "pump" | "fan",
+      //     value        : "semi_auto" | "auto",
+      //
+      //     // for crop:
+      //     field : "type" | "mode" | "growth_stage",
+      //     value : string   (the new option value)
+      //   }
+      // }
+      //
+      // We map this to the correct HA domain/service/entity and call setHAEntity().
+      // We respond with "set_entity_success" or "set_entity_error".
+      // ─────────────────────────────────────────────────────────────────────────────
+
+      socket.on("set_entity", async ({ type, payload } = {}) => {
+        try {
+          const { domain, service, data } = resolveHACall(type, payload);
+          await setHAEntity(ha_instance_id, domain, service, data);
+          socket.emit("set_entity_success", { type, payload });
+        } catch (err) {
+          console.error(
+            `[FE] set_entity failed for ${socket.id}:`,
+            err.message,
+          );
+          socket.emit("set_entity_error", {
+            type,
+            payload,
+            message: err.message,
+          });
+        }
+      });
 
       // ── Step 9: Handle disconnect ─────────────────────────────────────────────
       socket.on("disconnect", () => {
@@ -182,9 +242,12 @@ export function registerSocketHandlers(io, authenticateClient) {
         releaseHAConnection(ha_instance_id);
 
         // If nobody is left in this room, clean up the emitter listener too
-        const roomSize = io.sockets.adapter.rooms.get(ha_instance_id)?.size ?? 0;
+        const roomSize =
+          io.sockets.adapter.rooms.get(ha_instance_id)?.size ?? 0;
         if (roomSize === 0) {
-          console.log(`[FE] Room "${ha_instance_id}" is now empty. Cleaning up listener.`);
+          console.log(
+            `[FE] Room "${ha_instance_id}" is now empty. Cleaning up listener.`,
+          );
           haInstanceListeners.get(ha_instance_id)?.();
           haInstanceListeners.delete(ha_instance_id);
         }
@@ -199,12 +262,76 @@ export function registerSocketHandlers(io, authenticateClient) {
 
 /** Maps a state field name to its socket.io event name */
 const STATE_UPDATE_EVENT_MAP = {
-  crop          : "crop_changed",
-  sensors       : "sensor_changed",
-  actuators     : "actuator_changed",
-  warnings      : "warning_changed",
-  notifications : "notifications_changed",
+  crop: "crop_changed",
+  sensors: "sensor_changed",
+  actuators: "actuator_changed",
+  warnings: "warning_changed",
+  notifications: "notifications_changed",
   recommendation: "recommendation_changed",
-  weather       : "weather_changed",
-  location      : "location_changed",
+  weather: "weather_changed",
+  location: "location_changed",
 };
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENTITY CALL RESOLVER
+// Maps a frontend set_entity request to the correct HA REST API call.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Maps crop field names to their HA input_select entity IDs
+const CROP_ENTITY_MAP = {
+  type        : "input_select.crop_type",
+  mode        : "input_select.priority_mode",
+  growth_stage: "input_select.growth_stage",
+};
+
+/**
+ * Resolves a frontend set_entity request into a HA REST API call.
+ *
+ * @param {string} type    - "actuator_status" | "actuator_control_mode" | "crop"
+ * @param {object} payload - the change data from the frontend
+ * @returns {{ domain, service, data }}
+ * @throws {Error} if the type or payload is invalid
+ */
+function resolveHACall(type, payload) {
+  if (!type || !payload) throw new Error("Missing type or payload.");
+
+  // ── Actuator on/off ──
+  if (type === "actuator_status") {
+    const { actuatorType, value } = payload;
+    if (!actuatorType || !["on", "off"].includes(value))
+      throw new Error(`Invalid actuator_status payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_boolean",
+      service: value === "on" ? "turn_on" : "turn_off",
+      data   : { entity_id: `input_boolean.${actuatorType}_status` },
+    };
+  }
+
+  // ── Actuator control mode (auto / semi_auto) ──
+  if (type === "actuator_control_mode") {
+    const { actuatorType, value } = payload;
+    if (!actuatorType || !["auto", "semi_auto"].includes(value))
+      throw new Error(`Invalid actuator_control_mode payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_boolean",
+      service: value === "semi_auto" ? "turn_on" : "turn_off",
+      data   : { entity_id: `input_boolean.${actuatorType}_control_mode` },
+    };
+  }
+
+  // ── Crop field (type / mode / growth_stage) ──
+  if (type === "crop") {
+    const { field, value } = payload;
+    const entity_id = CROP_ENTITY_MAP[field];
+    if (!entity_id || !value)
+      throw new Error(`Invalid crop payload: ${JSON.stringify(payload)}`);
+    return {
+      domain : "input_select",
+      service: "select_option",
+      data   : { entity_id, option: value },
+    };
+  }
+
+  throw new Error(`Unknown set_entity type: "${type}"`);
+}

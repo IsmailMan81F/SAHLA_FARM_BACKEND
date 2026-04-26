@@ -1,5 +1,6 @@
 import { supabase } from "../libs/supabaseClient.js";
 import { verifyHomeassistantCredentials } from "./homeassistantService.js";
+import { v4 as uuidv4 } from "uuid";
 
 
 
@@ -112,7 +113,7 @@ export async function getUserPreferenceUnits(userId) {
  */
 function mapSensorTypeToUnitName(sensorType) {
   const mapping = {
-    "soil_moisture": "soil moisture",
+    "soil moisture": "soil moisture",
     "temperature": "temperature",
     "air_humidity": "humidity",
     "humidity": "humidity",
@@ -157,7 +158,7 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     // 3. Fetch actuator data
     const { data: actuatorData, error: actuatorError } = await supabase
       .from("actuator")
-      .select("id, farm_id, history_id, type, status, control_mode, run_at, duration, run_until")
+      .select("id, farm_id, history_id, type, status, control_mode, run_at, duration_minutes, run_until")
       .eq("farm_id", farmId)
       .eq("history_id", historyId);
 
@@ -200,7 +201,6 @@ export async function fetchHistoryById(farmId, historyId, userId) {
     const formattedSensors = (sensorData || []).map(sensor => {
       const unitName = mapSensorTypeToUnitName(sensor.type);
       const unit = unitName ? unitsMap[unitName] : null;
-      
       return {
         id: sensor.id,
         type: sensor.type,
@@ -215,8 +215,8 @@ export async function fetchHistoryById(farmId, historyId, userId) {
       let durationMinutes = null;
       let runUntil = null;
 
-      if (actuator.duration && actuator.run_at) {
-        durationMinutes = actuator.duration;
+      if (actuator.duration_minutes && actuator.run_at) {
+        durationMinutes = actuator.duration_minutes;
         if (actuator.run_until) {
           runUntil = actuator.run_until;
         }
@@ -257,6 +257,227 @@ export async function fetchHistoryById(farmId, historyId, userId) {
   } catch (err) {
     console.error("Error fetching history:", err);
     return { success: false, data: null, error: err };
+  }
+}
+
+/**
+ * Map sensor type from API to database enum format
+ * @param {string} sensorType - Sensor type from API
+ * @returns {string} - Mapped sensor type for database
+ */
+function mapSensorTypeToDatabase(sensorType) {
+  const mapping = {
+    "temperature": "temperature",
+    "air_humidity": "humidity",
+    "soil_moisture": "soil moisture",
+    "humidity": "humidity",
+    "luminosity": "luminosity",
+  };
+  return mapping[sensorType?.toLowerCase()] || sensorType;
+}
+
+/**
+ * Save snapshot to database
+ * @param {object} snapshot - Snapshot object containing crop, sensors, actuators, weather, notifications, location, recommendation
+ * @param {string} farmId - Farm ID
+ * @returns {Promise<{success: boolean, historyId: string|null, error: any}>}
+ */
+export async function saveToDatabase(snapshot, farmId) {
+  try {
+    // Generate history ID and timestamp
+    const historyId = uuidv4();
+    const timestamp = new Date().toISOString();
+
+    // 1. Handle location data - only insert if farm_id doesn't exist
+    if (snapshot.location) {
+      const { longitude, latitude, timezone } = snapshot.location;
+      
+      const { data: existingLocation, error: checkError } = await supabase
+        .from("location")
+        .select("farm_id")
+        .eq("farm_id", farmId)
+        .maybeSingle();
+
+      if (!checkError && !existingLocation) {
+        const { error: locationError } = await supabase
+          .from("location")
+          .insert([
+            {
+              farm_id: farmId,
+              longitude,
+              latitude,
+              timezone
+            }
+          ]);
+
+        if (locationError) {
+          console.error("Error inserting location:", locationError);
+          return { success: false, historyId: null, error: locationError };
+        }
+      }
+    }
+
+    // 2. Save crop data
+    if (snapshot.crop) {
+      const { type, mode, growth_stage } = snapshot.crop;
+
+      const lower_growth_stage = growth_stage.toLowerCase()
+      const lower_mode = mode.toLowerCase()
+
+      const { error: cropError } = await supabase
+        .from("crop")
+        .insert([
+          {
+            id: uuidv4(),
+            farm_id: farmId,
+            history_id: historyId,
+            timestamp,
+            type,
+            growth_stage : lower_growth_stage,
+            mode: lower_mode
+          }
+        ]);
+
+      if (cropError) {
+        console.error("Error inserting crop:", cropError);
+        return { success: false, historyId: null, error: cropError };
+      }
+    }
+
+    // 3. Save sensors data
+    if (snapshot.sensors && Array.isArray(snapshot.sensors)) {
+      const sensorInserts = snapshot.sensors.map(sensor => ({
+        id: uuidv4(),
+        farm_id: farmId,
+        history_id: historyId,
+        timestamp,
+        type: mapSensorTypeToDatabase(sensor.type),
+        value: sensor.value,
+        description: sensor.description
+      }));
+
+      const { error: sensorError } = await supabase
+        .from("sensor")
+        .insert(sensorInserts);
+
+      if (sensorError) {
+        console.error("Error inserting sensors:", sensorError);
+        return { success: false, historyId: null, error: sensorError };
+      }
+    }
+
+    // 4. Save actuators data
+    if (snapshot.actuators && Array.isArray(snapshot.actuators)) {
+      const actuatorInserts = snapshot.actuators.map(actuator => ({
+        id: uuidv4(),
+        farm_id: farmId,
+        history_id: historyId,
+        timestamp,
+        type: actuator.type,
+        status: actuator.status,
+        control_mode: actuator.control_mode,
+        run_at: actuator.run_at,
+        run_until: actuator.run_until,
+        duration_minutes: actuator.duration_minutes
+      }));
+
+      const { error: actuatorError } = await supabase
+        .from("actuator")
+        .insert(actuatorInserts);
+
+      if (actuatorError) {
+        console.error("Error inserting actuators:", actuatorError);
+        return { success: false, historyId: null, error: actuatorError };
+      }
+    }
+
+    // 5. Save weather data
+    if (snapshot.weather) {
+      const { state, summary } = snapshot.weather;
+      
+      const { error: weatherError } = await supabase
+        .from("weather")
+        .insert([
+          {
+            id: uuidv4(),
+            farm_id: farmId,
+            history_id: historyId,
+            timestamp,
+            state,
+            summary
+          }
+        ]);
+
+      if (weatherError) {
+        console.error("Error inserting weather:", weatherError);
+        return { success: false, historyId: null, error: weatherError };
+      }
+    }
+
+    // 6. Save recommendation data
+    if (snapshot.recommendation) {
+      const { error: recommendationError } = await supabase
+        .from("recommendation")
+        .insert([
+          {
+            id: uuidv4(),
+            farm_id: farmId,
+            history_id: historyId,
+            timestamp,
+            body: snapshot.recommendation
+          }
+        ]);
+
+      if (recommendationError) {
+        console.error("Error inserting recommendation:", recommendationError);
+        return { success: false, historyId: null, error: recommendationError };
+      }
+    }
+
+    // 7. Save notifications data (in two tables)
+    if (snapshot.notifications && Array.isArray(snapshot.notifications)) {
+      for (const notification of snapshot.notifications) {
+
+        const freshNotificationId = uuidv4();
+        // Insert into notifications table
+        const { error: notificationError } = await supabase
+          .from("notification")
+          .insert([
+            {
+              id: freshNotificationId,
+              title: notification.title,
+              description: notification.description,
+              timestamp
+            }
+          ]);
+
+        if (notificationError) {
+          console.error("Error inserting notification:", notificationError);
+          return { success: false, historyId: null, error: notificationError };
+        }
+
+        // Insert into notification_farm table
+        const { error: notificationFarmError } = await supabase
+          .from("notification_farm")
+          .insert([
+            {
+              farm_id: farmId,
+              notification_id: freshNotificationId,
+              status: "unread"
+            }
+          ]);
+
+        if (notificationFarmError) {
+          console.error("Error inserting notification_farm:", notificationFarmError);
+          return { success: false, historyId: null, error: notificationFarmError };
+        }
+      }
+    }
+
+    return { success: true, historyId, error: null };
+  } catch (err) {
+    console.error("Error saving to database:", err);
+    return { success: false, historyId: null, error: err };
   }
 }
 
