@@ -630,43 +630,45 @@ function createHAConnection(ha_instance_id, url, token) {
  *   and resolves once the initial state is ready.
  */
 export async function acquireHAConnection(ha_instance_id, farm_id) {
-  // ── Already connected ──
   if (haConnections.has(ha_instance_id)) {
     const entry = haConnections.get(ha_instance_id);
     entry.refCount++;
-    console.log(
-      `[HA:${ha_instance_id}] Reusing existing connection (refCount: ${entry.refCount}).`,
-    );
     return entry;
   }
 
-  // ── Connection already being established — wait for it ──
+  // 🔒 IMPORTANT: reserve immediately (synchronous lock)
   if (pendingConnections.has(ha_instance_id)) {
-    console.log(`[HA:${ha_instance_id}] Waiting for pending connection...`);
     const entry = await pendingConnections.get(ha_instance_id);
     entry.refCount++;
     return entry;
   }
 
-  // ── No connection exists — create one ──
   console.log(`[HA:${ha_instance_id}] Creating new HA connection...`);
-  const { url, token } = await _getCredentials(ha_instance_id);
 
-  const connectionPromise = createHAConnection(ha_instance_id, url, token)
-    .then((entry) => {
-      entry.farm_id = farm_id;
-      haConnections.set(ha_instance_id, entry);
-      pendingConnections.delete(ha_instance_id);
-      entry.refCount++;
-      return entry;
-    })
-    .catch((err) => {
-      pendingConnections.delete(ha_instance_id);
-      throw err;
-    });
+  const connectionPromise = (async () => {
+    const { url, token } = await _getCredentials(ha_instance_id);
+    const entry = await createHAConnection(ha_instance_id, url, token);
 
+    entry.farm_id = farm_id;
+    haConnections.set(ha_instance_id, entry);
+
+    return entry;
+  })();
+
+  // set IMMEDIATELY before any await resolves
   pendingConnections.set(ha_instance_id, connectionPromise);
-  return connectionPromise;
+
+  try {
+    const entry = await connectionPromise;
+    entry.refCount++;
+    return entry;
+  } catch (err) {
+    pendingConnections.delete(ha_instance_id);
+    throw err;
+  }  finally {
+    // ALWAYS cleanup lock
+    pendingConnections.delete(ha_instance_id);
+  }
 }
 
 /**
