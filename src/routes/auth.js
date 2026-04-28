@@ -4,6 +4,7 @@ import { supabase } from "../libs/supabaseClient.js";
 import { verifyUser } from "../services/authService.js";
 import { createUserProfile, updateUserLastLogin } from "../services/userService.js";
 import { createWelcomeNotification, createLoginNotification } from "../services/notificationService.js";
+import { verifyHomeassistantCredentials } from "../services/homeassistantService.js";
 
 export function createAuthRouter() {
   const router = express.Router();
@@ -254,6 +255,36 @@ export function createAuthRouter() {
     } catch (err) {
       console.error("loginSetup failed:", err);
       return res.status(500).json({ error: "Failed to complete login setup" });
+    }
+  });
+
+  router.get("/verify", async (req, res) => {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.startsWith("Bearer ")
+      ? authHeader.split(" ")[1]
+      : null;
+
+    if (!token) {
+      return res.status(401).json({ error: "Authorization token is required" });
+    }
+
+    try {
+      const { unauthorized, user_id } = await verifyUser(token);
+
+      if (unauthorized) {
+        return res.status(401).json({ error: "Invalid or expired token" });
+      }
+
+      const haVerification = await verifyHomeassistantCredentials(user_id);
+
+      if (haVerification.status !== "valid") {
+        return res.status(400).json({ error: haVerification.message });
+      }
+
+      return res.status(200).json({ message: "User and Home Assistant connection verified successfully" });
+    } catch (err) {
+      console.error("Verification failed:", err);
+      return res.status(500).json({ error: "Verification failed" });
     }
   });
 
