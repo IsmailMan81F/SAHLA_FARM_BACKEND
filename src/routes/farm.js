@@ -88,7 +88,7 @@ export function createStatesRouter() {
       "id": "act-pmp-01",
       "type": "pump",
       "status": "on",
-      "control_mode": "semi-auto",
+      "control_mode": "semi_auto",
       "run_at": "",
       "duration_minutes": null,
       "run_until": ""
