@@ -119,14 +119,14 @@ export function createStatesRouter() {
       "description": "Heavy rainfall is expected in the next 12 hours. Ensure greenhouse roof vents are properly closed and external drainage systems are unblocked."
     },
     {
-      "id": "warn-fr-01",
+      "id": "warn-fr-3",
       "title": "frost_risk",
       "status": "active",
       "description": "We fucked up",
       "severity": 100
     },
     {
-      "id": "warn-hr-01",
+      "id": "warn-hr-04",
       "title": "excessive_sunlight",
       "status": "active",
       "severity": 33,
@@ -138,7 +138,7 @@ export function createStatesRouter() {
   })
 
 
-  router.get("/freeStates", async (req, res) => {
+  router.get("/freeGraphData", async (req, res) => {
     return res.json([
   {
     "sensor": {
