@@ -145,6 +145,28 @@ export function createSettingsRouter() {
       return res.status(500).json({ error: "Failed to load profile settings" });
     }
   });
+  router.get("/freeUser", async(req, res) => res.json({
+  id: "550e8400-e29b-41d4-a716-446655440000",
+  username: "Fucker",
+  email: "ismailmeguehout99@gmail.com",
+  age: 18,
+  address: "Sidi Bel Abbes, Algeria",
+  avatarUrl: "https://images5.alphacoders.com/100/1005348.jpg",
+  haUrl: "http://sahla-homeassistant.local:8123",
+  preferences: {
+    displayUnits: {
+      temperature: "°C",
+      humidity: "%",
+      soilMoisture: "%",
+      luminosity: "lux"
+    },
+    language: "English"
+  },
+  farmSettings: {
+    crop: "banana",
+    mode: "balanced",
+    growthStage: "germination"
+  }}))
 
   router.post("/editUnit", async (req, res) => {
     const authHeader = req.headers.authorization;
