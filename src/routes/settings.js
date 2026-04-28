@@ -725,6 +725,7 @@ export function createSettingsRouter() {
       if (!existingUserHa) {
         const { error: userHaError } = await supabase.from("user_ha").insert([
           {
+            id: crypto.randomUUID(),
             user_id,
             ha_token: haToken,
           },
