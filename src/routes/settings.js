@@ -123,7 +123,7 @@ export function createSettingsRouter() {
 
       const haCredentials = await verifyHomeassistantCredentials(user_id);
       const isHaValid = haCredentials?.status === "valid";
-      const haUrl = isHaValid ? haCredentials.ha_url || null : null;
+      const haUrl = haCredentials?.ha_url || null;
       const haStatus = isHaValid ? "online" : "offline";
 
       return res.status(200).json({
