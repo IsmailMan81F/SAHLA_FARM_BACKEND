@@ -24,15 +24,21 @@ export async function verifyHomeassistantCredentials(user_id) {
 
   if (!userHaRows || !userHaRows.length) {
     return {
-      status: "need_setup_credentials",
-      message: "need to setup credentials",
+      status: "noCredentials",
+      message: "Need to setup Home Assistant credentials",
+      offlineMode: false,
     };
   }
 
-  let expiredTokenFound = false;
+  let expiredToken = false;
   let missingFarmFound = false;
   let invalidHaCredentialsFound = false;
+  let haInstanceIdHelperMissing = false;
+  let haServerIsDown = false;
   let validCredentialsResult = null;
+
+  let farm_id = null;
+  let ha_url = null;
 
   for (const row of userHaRows) {
     const ha_token = row.ha_token;
@@ -52,9 +58,11 @@ export async function verifyHomeassistantCredentials(user_id) {
     }
 
     if (!farmTokenRow?.farm_id) {
-      expiredTokenFound = true;
+      expiredToken = true;
       continue;
     }
+
+    expiredToken = false;
 
     // ── Get the farm row to retrieve ha_url
     const { data: farmRow, error: farmError } = await supabase
@@ -67,6 +75,9 @@ export async function verifyHomeassistantCredentials(user_id) {
       missingFarmFound = true;
       continue;
     }
+    missingFarmFound = false;
+    farm_id = farmRow.id;
+    ha_url = farmRow.ha_url;
 
     const baseUrl = farmRow.ha_url.replace(/\/$/, "");
 
@@ -84,7 +95,7 @@ export async function verifyHomeassistantCredentials(user_id) {
       });
     } catch (fetchError) {
       console.error("Home Assistant request failed:", fetchError);
-      invalidHaCredentialsFound = true;
+      haServerIsDown = true;
       continue;
     }
 
@@ -92,6 +103,8 @@ export async function verifyHomeassistantCredentials(user_id) {
       invalidHaCredentialsFound = true;
       continue;
     }
+
+    invalidHaCredentialsFound = true;
 
     // ===============================
     // 2. CHECK THE HELPER VALUE
@@ -138,9 +151,11 @@ export async function verifyHomeassistantCredentials(user_id) {
       }
     } else {
       // ── Helper not found → credentials invalid, user needs to create the helper
-      invalidHaCredentialsFound = true;
+      haInstanceIdHelperMissing = true;
       continue;
     }
+
+    haInstanceIdHelperMissing = false;
 
     // ===============================
     // 3. SYNC ha_instance_id TO FARM IF CHANGED
@@ -156,25 +171,59 @@ export async function verifyHomeassistantCredentials(user_id) {
       }
     }
 
+
+
     // ── All checks passed
     validCredentialsResult = {
       status: "valid",
       message: "credentials are valid",
-      farm_id: farmRow.id,
-      ha_url: farmRow.ha_url,
+      farm_id: farm_id,
+      ha_url: ha_url,
       ha_instance_id,
+      offlineMode: true,
     };
     break;
   }
 
   if (validCredentialsResult) return validCredentialsResult;
-  if (expiredTokenFound)
-    return { status: "expired", message: "ha token expired" };
-  if (missingFarmFound) return { status: "expired", message: "token expired" };
+  if (expiredToken)
+    return {
+      status: "expired",
+      message: "Home Assistant token expired",
+      offlineMode: false,
+    };
+  if (missingFarmFound)
+    return {
+      status: "notFound",
+      message: "Home Assistant not found",
+      offlineMode: false,
+    };
+  if (haServerIsDown)
+    return {
+      status: "haDown",
+      message: "Home Assistant server is unreachable",
+      offlineMode: true,
+      farm_id: farm_id,
+      ha_url: ha_url
+    };
   if (invalidHaCredentialsFound)
-    return { status: "invalid", message: "invalid credentials" };
+    return {
+      status: "invalid",
+      message: "Home Assistant credentials are invalid",
+      offlineMode: false,
+    };
+  if (haInstanceIdHelperMissing)
+    return {
+      status: "missingHelper",
+      message:
+        "HA instance ID helper is missing in Home Assistant. Please create an input_text helper with entity_id 'input_text.ha_instance_id'",
+      offlineMode: false,
+    };
 
-  return { status: "invalid", message: "invalid credentials" };
+  return {
+    status: "invalid",
+    message: "Home Assistant credentials are invalid",
+  };
 }
 
 /**
@@ -196,7 +245,7 @@ export async function authenticateClient(token) {
         authorized: false,
         ha_instance_id: null,
         farm_id: null,
-        message: "Invalid or expired token"
+        message: "Invalid or expired token",
       };
     }
 
@@ -212,7 +261,7 @@ export async function authenticateClient(token) {
         authorized: false,
         ha_instance_id: null,
         farm_id: null,
-        message: "Failed to query user HA credentials"
+        message: "Failed to query user HA credentials",
       };
     }
 
@@ -221,7 +270,7 @@ export async function authenticateClient(token) {
         authorized: false,
         ha_instance_id: null,
         farm_id: null,
-        message: "No HA tokens found for user"
+        message: "No HA tokens found for user",
       };
     }
 
@@ -254,7 +303,10 @@ export async function authenticateClient(token) {
         .single();
 
       if (farmError || !farmRow?.ha_instance_id) {
-        console.error("Error querying farm or missing ha_instance_id:", farmError);
+        console.error(
+          "Error querying farm or missing ha_instance_id:",
+          farmError,
+        );
         continue;
       }
 
@@ -263,7 +315,7 @@ export async function authenticateClient(token) {
         authorized: true,
         ha_instance_id: farmRow.ha_instance_id,
         farm_id: farmTokenRow.farm_id,
-        message: "Authentication successful"
+        message: "Authentication successful",
       };
     }
 
@@ -272,7 +324,7 @@ export async function authenticateClient(token) {
       authorized: false,
       ha_instance_id: null,
       farm_id: null,
-      message: "No active HA token found"
+      message: "No active HA token found",
     };
   } catch (error) {
     console.error("Unexpected error in authenticateClient:", error);
@@ -280,7 +332,7 @@ export async function authenticateClient(token) {
       authorized: false,
       ha_instance_id: null,
       farm_id: null,
-      message: "Internal server error during authentication"
+      message: "Internal server error during authentication",
     };
   }
 }
@@ -337,7 +389,7 @@ export async function getCredentials(ha_instance_id) {
     return {
       url: ha_url,
       token: farmTokenRow.ha_token,
-      message: "Credentials retrieved successfully"
+      message: "Credentials retrieved successfully",
     };
   } catch (error) {
     console.error("Error in getCredentials:", error);

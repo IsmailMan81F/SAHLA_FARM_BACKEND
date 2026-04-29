@@ -119,7 +119,7 @@ export function createHistoryRouter() {
 
     // Verify HA credentials
     const haResult = await verifyHomeassistantCredentials(user_id);
-    if (haResult.status !== "valid") {
+    if (!haResult.offlineMode) {
       return {
         valid: false,
         user_id,

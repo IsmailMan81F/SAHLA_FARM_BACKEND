@@ -258,7 +258,7 @@ export function createAuthRouter() {
     }
   });
 
-  router.get("/verify", async (req, res) => {
+  router.post("/verify", async (req, res) => {
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith("Bearer ")
       ? authHeader.split(" ")[1]
@@ -278,7 +278,7 @@ export function createAuthRouter() {
       const haVerification = await verifyHomeassistantCredentials(user_id);
 
       if (haVerification.status !== "valid") {
-        return res.status(400).json({ error: haVerification.message });
+        return res.status(400).json({ status: haVerification.status, message: haVerification.message });
       }
 
       return res.status(200).json({ message: "User and Home Assistant connection verified successfully" });
