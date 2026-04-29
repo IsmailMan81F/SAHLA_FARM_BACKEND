@@ -33,7 +33,6 @@ export function createNotificationsRouter() {
       }
 
       const haResult = await verifyHomeassistantCredentials(user_id);
-      console.log("HA credential verification result:", haResult);
       if (!haResult.offlineMode) {
         return res
           .status(400)

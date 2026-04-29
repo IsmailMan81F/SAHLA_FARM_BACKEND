@@ -154,16 +154,15 @@ export function registerSocketHandlers(io, authenticateClient) {
       // HA instance share one room, so updates can be emitted to all at once.
       socket.join(ha_instance_id);
       socket.emit("auth_success", { ha_instance_id });
+      socket.emit("initial_state", haEntry.actualState);
 
       // ── Step 8: Register the state emitter listener (once per HA instance) ──
       // We only register one listener per HA instance — it emits to the whole room.
       if (!haInstanceListeners.has(ha_instance_id)) {
         const onStateUpdate = (update) => {
-          const eventName =
-            STATE_UPDATE_EVENT_MAP[update.field] ?? "state_changed";
-          io.to(ha_instance_id).emit(eventName, update);
+          io.to(ha_instance_id).emit("update_state", update);
           console.log(
-            `[FE] Emitted "${eventName}" to room "${ha_instance_id}"`,
+            `[FE] Emitted "update_state" to room "${ha_instance_id}"`,
           );
         };
 
@@ -179,13 +178,13 @@ export function registerSocketHandlers(io, authenticateClient) {
           });
         };
 
-        haEntry.emitter.on("state_update", onStateUpdate);
+        haEntry.emitter.on("update_state", onStateUpdate);
         haEntry.emitter.on("ha_disconnected", onHADisconnected);
         haEntry.emitter.on("ha_failed", onHAFailed);
 
         // Store cleanup function so we can remove the listener later
         haInstanceListeners.set(ha_instance_id, () => {
-          haEntry.emitter.off("state_update", onStateUpdate);
+          haEntry.emitter.off("update_state", onStateUpdate);
           haEntry.emitter.off("ha_disconnected", onHADisconnected);
           haEntry.emitter.off("ha_failed", onHAFailed);
         });
@@ -260,18 +259,8 @@ export function registerSocketHandlers(io, authenticateClient) {
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Maps a state field name to its socket.io event name */
-const STATE_UPDATE_EVENT_MAP = {
-  crop: "crop_changed",
-  sensors: "sensor_changed",
-  actuators: "actuator_changed",
-  warnings: "warning_changed",
-  notifications: "notifications_changed",
-  recommendation: "recommendation_changed",
-  weather: "weather_changed",
-  location: "location_changed",
-};
-
+// The backend now emits a single update_state event with a { target, newState }
+// payload. No per-field socket event names are required here.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ENTITY CALL RESOLVER

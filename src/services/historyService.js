@@ -270,7 +270,7 @@ function mapSensorTypeToDatabase(sensorType) {
     "temperature": "temperature",
     "air_humidity": "humidity",
     "soil_moisture": "soil moisture",
-    "humidity": "humidity",
+    "light_intensity": "Light Intensity",
     "luminosity": "luminosity",
   };
   return mapping[sensorType?.toLowerCase()] || sensorType;

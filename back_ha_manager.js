@@ -31,7 +31,7 @@ export function setCredentialsProvider(fn) {
  * Each entry holds:
  *   - socket       : the active WebSocket to HA
  *   - actualState  : the latest full state snapshot
- *   - emitter      : EventEmitter that fires "state_update" on every change
+ *   - emitter      : EventEmitter that fires "update_state" on every change
  *   - refCount     : how many frontend clients are currently using this connection
  *   - ready        : whether the initial get_states has completed
  */
@@ -58,14 +58,14 @@ const ENTITY = {
     "input_number.temperature",
     "input_number.air_humidity",
     "input_number.soil_moisture",
-    "input_number.luminosity",
+    "input_number.light_intensity",
   ],
 
   SENSOR_DESCRIPTIONS: {
     temperature: "input_text.temperature_description",
     air_humidity: "input_text.humidity_description",
     soil_moisture: "input_text.soil_moisture_description",
-    luminosity: "input_text.luminosity_description",
+    light_intensity: "input_text.light_intensity_description",
   },
 
   ACTUATORS: ["pump", "fan"],
@@ -229,6 +229,11 @@ function buildLocation(states) {
   };
 }
 
+function emitUpdateState(emitter, target, newState) {
+  console.log(`Emitting state update for ${target}:`, newState);
+  emitter.emit("update_state", { target, newState });
+}
+
 function buildInitialState(rawStates) {
   const legalPrefixes = [
     "input_datetime",
@@ -247,7 +252,6 @@ function buildInitialState(rawStates) {
     actuators: buildActuators(states),
     warnings: buildWarnings(states),
     notifications: buildNotifications(states),
-    weather: buildWeather(states),
     location: buildLocation(states),
     recommendation: getState(states, ENTITY.RECOMMENDATION),
   };
@@ -266,22 +270,13 @@ function updateActualState(actualState, emitter, event) {
   // ── Crop ──
   if (entity_id === ENTITY.CROP_TYPE) {
     actualState.crop.type = state;
-    emitter.emit("state_update", {
-      field: "crop",
-      value: cloneState(actualState.crop),
-    });
+    emitUpdateState(emitter, "crop", cloneState(actualState.crop));
   } else if (entity_id === ENTITY.GROWTH_STAGE) {
     actualState.crop.mode = state;
-    emitter.emit("state_update", {
-      field: "crop",
-      value: cloneState(actualState.crop),
-    });
+    emitUpdateState(emitter, "crop", cloneState(actualState.crop));
   } else if (entity_id === ENTITY.PRIORITY_MODE) {
     actualState.crop.growth_stage = state;
-    emitter.emit("state_update", {
-      field: "crop",
-      value: cloneState(actualState.crop),
-    });
+    emitUpdateState(emitter, "crop", cloneState(actualState.crop));
 
     // ── Sensor value ──
   } else if (entity_id.startsWith("input_number.")) {
@@ -289,10 +284,7 @@ function updateActualState(actualState, emitter, event) {
     const sensor = actualState.sensors.find((s) => s.type === type);
     if (sensor) {
       sensor.value = state;
-      emitter.emit("state_update", {
-        field: "sensors",
-        value: cloneState(actualState.sensors),
-      });
+      emitUpdateState(emitter, "sensors", cloneState(actualState.sensors));
     }
 
     // ── Sensor description ──
@@ -306,10 +298,7 @@ function updateActualState(actualState, emitter, event) {
     const sensor = type && actualState.sensors.find((s) => s.type === type);
     if (sensor) {
       sensor.description = state;
-      emitter.emit("state_update", {
-        field: "sensors",
-        value: cloneState(actualState.sensors),
-      });
+      emitUpdateState(emitter, "sensors", cloneState(actualState.sensors));
     }
 
     // ── Actuator boolean (status or control_mode) ──
@@ -322,10 +311,7 @@ function updateActualState(actualState, emitter, event) {
       );
       if (actuator) {
         actuator.status = state;
-        emitter.emit("state_update", {
-          field: "actuators",
-          value: cloneState(actualState.actuators),
-        });
+        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
       }
     } else if (boolType.endsWith("_control_mode")) {
       const actuator = actualState.actuators.find(
@@ -333,20 +319,14 @@ function updateActualState(actualState, emitter, event) {
       );
       if (actuator) {
         actuator.control_mode = state === "on" ? "semi_auto" : "auto";
-        emitter.emit("state_update", {
-          field: "actuators",
-          value: cloneState(actualState.actuators),
-        });
+        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
       }
     } else {
       // ── Warning boolean ──
       const warning = actualState.warnings.find((w) => w.title === boolType);
       if (warning) {
         warning.status = state === "on" ? "active" : "inactive";
-        emitter.emit("state_update", {
-          field: "warnings",
-          value: cloneState(actualState.warnings),
-        });
+        emitUpdateState(emitter, "warnings", cloneState(actualState.warnings));
       }
     }
 
@@ -364,10 +344,7 @@ function updateActualState(actualState, emitter, event) {
       const extra = parseObjString(state);
       warning.severity = extra.severity ?? warning.severity;
       warning.description = extra.description ?? warning.description;
-      emitter.emit("state_update", {
-        field: "warnings",
-        value: cloneState(actualState.warnings),
-      });
+      emitUpdateState(emitter, "warnings", cloneState(actualState.warnings));
     }
 
     // ── Actuator schedule ──
@@ -384,10 +361,7 @@ function updateActualState(actualState, emitter, event) {
           actuator.run_at,
           actuator.run_until,
         );
-        emitter.emit("state_update", {
-          field: "actuators",
-          value: cloneState(actualState.actuators),
-        });
+        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
       }
     } else if (datetimeType.endsWith("_execute_until")) {
       const actuator = actualState.actuators.find(
@@ -399,17 +373,14 @@ function updateActualState(actualState, emitter, event) {
           actuator.run_at,
           actuator.run_until,
         );
-        emitter.emit("state_update", {
-          field: "actuators",
-          value: cloneState(actualState.actuators),
-        });
+        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
       }
     }
 
     // ── Recommendation ──
   } else if (entity_id === ENTITY.RECOMMENDATION) {
     actualState.recommendation = state;
-    emitter.emit("state_update", { field: "recommendation", value: state });
+    emitUpdateState(emitter, "recommendation", state);
 
     // ── App notification ──
   } else if (entity_id === ENTITY.APP_NOTIFICATION) {
@@ -423,10 +394,7 @@ function updateActualState(actualState, emitter, event) {
     };
     if (index >= 0) actualState.notifications[index] = updated;
     else actualState.notifications.unshift(updated);
-    emitter.emit("state_update", {
-      field: "notifications",
-      value: cloneState(actualState.notifications),
-    });
+    emitUpdateState(emitter, "notifications", cloneState(actualState.notifications));
 
     // ── Suggested actions ──
   } else if (entity_id === ENTITY.SUGGESTED_ACTIONS) {
@@ -444,10 +412,7 @@ function updateActualState(actualState, emitter, event) {
     } else {
       if (index >= 0) actualState.notifications.splice(index, 1);
     }
-    emitter.emit("state_update", {
-      field: "notifications",
-      value: cloneState(actualState.notifications),
-    });
+    emitUpdateState(emitter, "notifications", cloneState(actualState.notifications));
 
     // ── Weather ──
   } else if (entity_id === ENTITY.WEATHER_INFO) {
@@ -456,10 +421,7 @@ function updateActualState(actualState, emitter, event) {
       state: parsed.state ?? null,
       summary: parsed.summary ?? null,
     };
-    emitter.emit("state_update", {
-      field: "weather",
-      value: cloneState(actualState.weather),
-    });
+    emitUpdateState(emitter, "weather", cloneState(actualState.weather));
 
     // ── Location ──
   } else if (entity_id === ENTITY.LOCATION_INFO) {
@@ -469,10 +431,7 @@ function updateActualState(actualState, emitter, event) {
       longitude: parsed.longitude ?? null,
       latitude: parsed.latitude ?? null,
     };
-    emitter.emit("state_update", {
-      field: "location",
-      value: cloneState(actualState.location),
-    });
+    emitUpdateState(emitter, "location", cloneState(actualState.location));
   }
 }
 
@@ -546,6 +505,7 @@ function createHAConnection(ha_instance_id, url, token) {
           entry.actualState = buildInitialState(data.result);
           entry.ready = true;
           entry.reconnectAttempts = 0;
+          console.log(entry.actualState)
           console.log(`[HA:${ha_instance_id}] Initial state loaded.`);
 
           // ── Start the 10-min snapshot timer ──────────────────────────────────────
@@ -579,6 +539,12 @@ function createHAConnection(ha_instance_id, url, token) {
 
       socket.on("close", () => {
         console.warn(`[HA:${ha_instance_id}] WebSocket closed.`);
+
+        // ── Stop saving snapshots while disconnected ──
+        if (entry.snapshotInterval) {
+          clearInterval(entry.snapshotInterval);
+          entry.snapshotInterval = null;
+        }
 
         // ── If no clients are using this connection anymore, don't reconnect ──
         if (entry.refCount <= 0) {
