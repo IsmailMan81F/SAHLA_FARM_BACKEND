@@ -191,29 +191,6 @@ export function registerSocketHandlers(io, authenticateClient) {
       }
 
       // ── Step 8.5: Handle entity change requests from the frontend ─────────────────
-      //
-      // The frontend emits:
-      // {
-      //   type  : "actuator_status"    | "actuator_control_mode" | "crop",
-      //   payload: {
-      //     // for actuator_status:
-      //     actuatorType : "pump" | "fan",
-      //     value        : "on"   | "off",
-      //
-      //     // for actuator_control_mode:
-      //     actuatorType : "pump" | "fan",
-      //     value        : "semi_auto" | "auto",
-      //
-      //     // for crop:
-      //     field : "type" | "mode" | "growth_stage",
-      //     value : string   (the new option value)
-      //   }
-      // }
-      //
-      // We map this to the correct HA domain/service/entity and call setHAEntity().
-      // We respond with "set_entity_success" or "set_entity_error".
-      // ─────────────────────────────────────────────────────────────────────────────
-
       socket.on("set_entity", async ({ type, payload } = {}) => {
         try {
           const { domain, service, data } = resolveHACall(type, payload);
@@ -227,6 +204,33 @@ export function registerSocketHandlers(io, authenticateClient) {
           socket.emit("set_entity_error", {
             type,
             payload,
+            message: err.message,
+          });
+        }
+      });
+
+      // ── Step 8.6: Handle change_state requests from the frontend ───────────────
+      // The frontend emits: { target: "crop" | "actuators", newState: {...} }
+      // We map the newState fields to HA entities and update them.
+      socket.on("change_state", async ({ target, newState } = {}) => {
+        try {
+          if (!target || !newState) {
+            throw new Error("Missing target or newState.");
+          }
+
+          const calls = resolveChangeStateCall(target, newState);
+          for (const { domain, service, data } of calls) {
+            await setHAEntity(ha_instance_id, domain, service, data);
+          }
+          socket.emit("change_state_success", { target, newState });
+        } catch (err) {
+          console.error(
+            `[FE] change_state failed for ${socket.id}:`,
+            err.message,
+          );
+          socket.emit("change_state_error", {
+            target,
+            newState,
             message: err.message,
           });
         }
@@ -256,15 +260,8 @@ export function registerSocketHandlers(io, authenticateClient) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
-
-// The backend now emits a single update_state event with a { target, newState }
-// payload. No per-field socket event names are required here.
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ENTITY CALL RESOLVER
-// Maps a frontend set_entity request to the correct HA REST API call.
+// Maps frontend requests to the correct HA REST API calls.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Maps crop field names to their HA input_select entity IDs
@@ -273,6 +270,66 @@ const CROP_ENTITY_MAP = {
   mode        : "input_select.priority_mode",
   growth_stage: "input_select.growth_stage",
 };
+
+/**
+ * Resolves a change_state request into one or more HA REST API calls.
+ *
+ * @param {string} target - "crop" | "actuators"
+ * @param {object} newState - the updated state fields
+ * @returns {Array<{ domain, service, data }>} array of HA calls
+ * @throws {Error} if the target or newState is invalid
+ */
+function resolveChangeStateCall(target, newState) {
+  const calls = [];
+
+  if (target === "crop") {
+    // ── Crop: iterate over fields like type, mode, growth_stage ──
+    for (const [field, value] of Object.entries(newState)) {
+      const entity_id = CROP_ENTITY_MAP[field];
+      if (!entity_id) {
+        console.warn(`[HA] Unknown crop field: ${field}`);
+        continue;
+      }
+      if (!value) continue; // Skip null/undefined values
+      calls.push({
+        domain: "input_select",
+        service: "select_option",
+        data: { entity_id, option: value },
+      });
+    }
+  } else if (target === "actuators") {
+    // ── Actuators: newState is expected to be an array of actuators ──
+    const actuators = Array.isArray(newState) ? newState : [newState];
+    for (const actuator of actuators) {
+      const { type: actuatorType } = actuator;
+      if (!actuatorType) continue;
+
+      // Handle status (turn_on / turn_off)
+      if (actuator.status !== undefined) {
+        const value = actuator.status === "on" ? "on" : "off";
+        calls.push({
+          domain: "input_boolean",
+          service: value === "on" ? "turn_on" : "turn_off",
+          data: { entity_id: `input_boolean.${actuatorType}_status` },
+        });
+      }
+
+      // Handle control_mode (auto / semi_auto)
+      if (actuator.control_mode !== undefined) {
+        const isAutoMode = actuator.control_mode === "auto";
+        calls.push({
+          domain: "input_boolean",
+          service: isAutoMode ? "turn_off" : "turn_on",
+          data: { entity_id: `input_boolean.${actuatorType}_control_mode` },
+        });
+      }
+    }
+  } else {
+    throw new Error(`Unknown change_state target: "${target}"`);
+  }
+
+  return calls;
+}
 
 /**
  * Resolves a frontend set_entity request into a HA REST API call.
