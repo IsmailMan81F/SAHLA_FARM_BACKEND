@@ -13,7 +13,7 @@
 import WebSocket from "ws";
 import EventEmitter from "events";
 import { v4 as uuidv4 } from "uuid";
-import { saveToDatabase } from "./src/services/historyService.js"
+import { saveToDatabase } from "./src/services/historyService.js";
 
 // ─── Injected from outside — resolves { url, token } for a given ha_instance_id
 let _getCredentials = null;
@@ -272,10 +272,10 @@ function updateActualState(actualState, emitter, event) {
     actualState.crop.type = state;
     emitUpdateState(emitter, "crop", cloneState(actualState.crop));
   } else if (entity_id === ENTITY.GROWTH_STAGE) {
-    actualState.crop.mode = state;
+    actualState.crop.growth_stage = state; // ✅
     emitUpdateState(emitter, "crop", cloneState(actualState.crop));
   } else if (entity_id === ENTITY.PRIORITY_MODE) {
-    actualState.crop.growth_stage = state;
+    actualState.crop.mode = state; // ✅
     emitUpdateState(emitter, "crop", cloneState(actualState.crop));
 
     // ── Sensor value ──
@@ -311,7 +311,11 @@ function updateActualState(actualState, emitter, event) {
       );
       if (actuator) {
         actuator.status = state;
-        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
+        emitUpdateState(
+          emitter,
+          "actuators",
+          cloneState(actualState.actuators),
+        );
       }
     } else if (boolType.endsWith("_control_mode")) {
       const actuator = actualState.actuators.find(
@@ -319,7 +323,11 @@ function updateActualState(actualState, emitter, event) {
       );
       if (actuator) {
         actuator.control_mode = state === "on" ? "semi_auto" : "auto";
-        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
+        emitUpdateState(
+          emitter,
+          "actuators",
+          cloneState(actualState.actuators),
+        );
       }
     } else {
       // ── Warning boolean ──
@@ -361,7 +369,11 @@ function updateActualState(actualState, emitter, event) {
           actuator.run_at,
           actuator.run_until,
         );
-        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
+        emitUpdateState(
+          emitter,
+          "actuators",
+          cloneState(actualState.actuators),
+        );
       }
     } else if (datetimeType.endsWith("_execute_until")) {
       const actuator = actualState.actuators.find(
@@ -373,7 +385,11 @@ function updateActualState(actualState, emitter, event) {
           actuator.run_at,
           actuator.run_until,
         );
-        emitUpdateState(emitter, "actuators", cloneState(actualState.actuators));
+        emitUpdateState(
+          emitter,
+          "actuators",
+          cloneState(actualState.actuators),
+        );
       }
     }
 
@@ -394,7 +410,11 @@ function updateActualState(actualState, emitter, event) {
     };
     if (index >= 0) actualState.notifications[index] = updated;
     else actualState.notifications.unshift(updated);
-    emitUpdateState(emitter, "notifications", cloneState(actualState.notifications));
+    emitUpdateState(
+      emitter,
+      "notifications",
+      cloneState(actualState.notifications),
+    );
 
     // ── Suggested actions ──
   } else if (entity_id === ENTITY.SUGGESTED_ACTIONS) {
@@ -412,7 +432,11 @@ function updateActualState(actualState, emitter, event) {
     } else {
       if (index >= 0) actualState.notifications.splice(index, 1);
     }
-    emitUpdateState(emitter, "notifications", cloneState(actualState.notifications));
+    emitUpdateState(
+      emitter,
+      "notifications",
+      cloneState(actualState.notifications),
+    );
 
     // ── Weather ──
   } else if (entity_id === ENTITY.WEATHER_INFO) {
@@ -505,24 +529,24 @@ function createHAConnection(ha_instance_id, url, token) {
           entry.actualState = buildInitialState(data.result);
           entry.ready = true;
           entry.reconnectAttempts = 0;
-          console.log(entry.actualState)
+          console.log(entry.actualState);
           console.log(`[HA:${ha_instance_id}] Initial state loaded.`);
 
           // ── Start the 10-min snapshot timer ──────────────────────────────────────
-          entry.snapshotInterval = setInterval(
-            async () => {
-              try {
-                await saveToDatabase(cloneState(entry.actualState), entry.farm_id);
-                console.log(`[HA:${ha_instance_id}] Snapshot saved.`);
-              } catch (err) {
-                console.error(
-                  `[HA:${ha_instance_id}] Snapshot save failed:`,
-                  err.message,
-                );
-              }
-            },
-            15 * 1000,
-          );
+          entry.snapshotInterval = setInterval(async () => {
+            try {
+              await saveToDatabase(
+                cloneState(entry.actualState),
+                entry.farm_id,
+              );
+              console.log(`[HA:${ha_instance_id}] Snapshot saved.`);
+            } catch (err) {
+              console.error(
+                `[HA:${ha_instance_id}] Snapshot save failed:`,
+                err.message,
+              );
+            }
+          }, 15 * 1000);
 
           resolve(entry);
         }
@@ -631,7 +655,7 @@ export async function acquireHAConnection(ha_instance_id, farm_id) {
   } catch (err) {
     pendingConnections.delete(ha_instance_id);
     throw err;
-  }  finally {
+  } finally {
     // ALWAYS cleanup lock
     pendingConnections.delete(ha_instance_id);
   }
@@ -664,7 +688,6 @@ export function releaseHAConnection(ha_instance_id) {
     entry.socket.close();
     haConnections.delete(ha_instance_id);
   }
-  
 }
 
 export function getHAState(ha_instance_id) {

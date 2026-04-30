@@ -218,8 +218,11 @@ export function registerSocketHandlers(io, authenticateClient) {
             throw new Error("Missing target or newState.");
           }
 
+          console.log(`[FE] change_state request: target="${target}"`, newState);
           const calls = resolveChangeStateCall(target, newState);
+          console.log(`[FE] Resolved to ${calls.length} HA call(s):`, JSON.stringify(calls, null, 2));
           for (const { domain, service, data } of calls) {
+            console.log(`[FE] Sending to HA: ${domain}/${service}`, JSON.stringify(data));
             await setHAEntity(ha_instance_id, domain, service, data);
           }
           socket.emit("change_state_success", { target, newState });
@@ -284,18 +287,25 @@ function resolveChangeStateCall(target, newState) {
 
   if (target === "crop") {
     // ── Crop: iterate over fields like type, mode, growth_stage ──
+    console.log(`[Resolver] Processing crop fields:`, Object.keys(newState));
     for (const [field, value] of Object.entries(newState)) {
       const entity_id = CROP_ENTITY_MAP[field];
+      console.log(`[Resolver] Field "${field}" -> entity_id="${entity_id}", value="${value}"`);
       if (!entity_id) {
         console.warn(`[HA] Unknown crop field: ${field}`);
         continue;
       }
-      if (!value) continue; // Skip null/undefined values
-      calls.push({
+      if (!value) {
+        console.log(`[Resolver] Skipping empty value for field "${field}"`);
+        continue;
+      }
+      const call = {
         domain: "input_select",
         service: "select_option",
         data: { entity_id, option: value },
-      });
+      };
+      console.log(`[Resolver] Adding call:`, call);
+      calls.push(call);
     }
   } else if (target === "actuators") {
     // ── Actuators: newState is expected to be an array of actuators ──
