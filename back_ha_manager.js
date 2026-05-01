@@ -252,6 +252,7 @@ function buildInitialState(rawStates) {
     actuators: buildActuators(states),
     warnings: buildWarnings(states),
     notifications: buildNotifications(states),
+    weather: buildWeather(states),
     location: buildLocation(states),
     recommendation: getState(states, ENTITY.RECOMMENDATION),
   };
@@ -441,11 +442,12 @@ function updateActualState(actualState, emitter, event) {
     // ── Weather ──
   } else if (entity_id === ENTITY.WEATHER_INFO) {
     const parsed = parseObjString(state);
-    actualState.weather = {
+    const newWeatherState = {
       state: parsed.state ?? null,
       summary: parsed.summary ?? null,
     };
-    emitUpdateState(emitter, "weather", cloneState(actualState.weather));
+    actualState.weather = newWeatherState;
+    emitUpdateState(emitter, "weather", cloneState(newWeatherState));
 
     // ── Location ──
   } else if (entity_id === ENTITY.LOCATION_INFO) {
