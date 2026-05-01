@@ -54,12 +54,19 @@ const ENTITY = {
   GROWTH_STAGE: "input_select.growth_stage",
   PRIORITY_MODE: "input_select.priority_mode",
 
-  SENSORS: [
-    "input_number.temperature",
-    "input_number.air_humidity",
-    "input_number.soil_moisture",
-    "input_number.light_intensity",
+  SENSOR_TYPES: [
+    "temperature",
+    "air_humidity",
+    "soil_moisture",
+    "light_intensity",
   ],
+
+  SENSOR_ENTITY_MAP: {
+    temperature: "sensor.farm_temperature",
+    air_humidity: "sensor.farm_humidity",
+    soil_moisture: "sensor.farm_soil_moisture",
+    light_intensity: "sensor.farm_ambient_light",
+  },
 
   SENSOR_DESCRIPTIONS: {
     temperature: "input_text.temperature_description",
@@ -101,6 +108,13 @@ const ENTITY = {
   WEATHER_INFO: "input_text.weather_info",
   LOCATION_INFO: "input_text.location_info",
 };
+
+const HA_SENSOR_ENTITY_TO_TYPE = Object.fromEntries(
+  Object.entries(ENTITY.SENSOR_ENTITY_MAP).map(([type, entityId]) => [
+    entityId,
+    type,
+  ]),
+);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -145,8 +159,8 @@ function buildCrop(states) {
 }
 
 function buildSensors(states) {
-  return ENTITY.SENSORS.map((entityId) => {
-    const type = entityId.split(".")[1];
+  return ENTITY.SENSOR_TYPES.map((type) => {
+    const entityId = ENTITY.SENSOR_ENTITY_MAP[type];
     const descEntity = ENTITY.SENSOR_DESCRIPTIONS[type];
     return {
       id: uuidv4(),
@@ -280,8 +294,13 @@ function updateActualState(actualState, emitter, event) {
     emitUpdateState(emitter, "crop", cloneState(actualState.crop));
 
     // ── Sensor value ──
-  } else if (entity_id.startsWith("input_number.")) {
-    const type = entity_id.split(".")[1];
+  } else if (
+    entity_id.startsWith("input_number.") ||
+    Object.prototype.hasOwnProperty.call(HA_SENSOR_ENTITY_TO_TYPE, entity_id)
+  ) {
+    const type = entity_id.startsWith("input_number.")
+      ? entity_id.split(".")[1]
+      : HA_SENSOR_ENTITY_TO_TYPE[entity_id];
     const sensor = actualState.sensors.find((s) => s.type === type);
     if (sensor) {
       sensor.value = state;
